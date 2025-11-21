@@ -1,28 +1,55 @@
 import { useState } from 'react';
-import { LogIn } from 'lucide-react';
+import { LogIn, AlertCircle, CheckCircle } from 'lucide-react';
 import { auth } from '../services/api';
 
-interface LoginProps {
-  onLogin: () => void;
-  onSignUp?: () => void;
+interface RegisterProps {
+  onRegisterSuccess: () => void;
+  onBackToLogin: () => void;
 }
 
-export default function Login({ onLogin, onSignUp }: LoginProps) {
+export default function Register({ onRegisterSuccess, onBackToLogin }: RegisterProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const validateForm = () => {
+    if (!username || username.length < 3) {
+      setError('Username must be at least 3 characters');
+      return false;
+    }
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return false;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return false;
+    }
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
+
+    if (!validateForm()) return;
+
     setLoading(true);
 
     try {
-      await auth.login(username, password);
-      onLogin();
-    } catch (err) {
-      setError('Invalid credentials');
+      await auth.register(username, password);
+      setSuccess('Account created successfully! Logging in...');
+      setTimeout(() => {
+        auth.login(username, password).then(() => {
+          onRegisterSuccess();
+        });
+      }, 1500);
+    } catch (err: any) {
+      setError(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -47,8 +74,8 @@ export default function Login({ onLogin, onSignUp }: LoginProps) {
           </div>
 
           {/* Heading */}
-          <h1 className="text-3xl font-bold text-center text-white mb-2">Warebot</h1>
-          <p className="text-center text-accent-400 mb-8">Warehouse Management System</p>
+          <h1 className="text-3xl font-bold text-center text-white mb-2">Create Account</h1>
+          <p className="text-center text-accent-400 mb-8">Warebot Warehouse Management</p>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -59,10 +86,14 @@ export default function Login({ onLogin, onSignUp }: LoginProps) {
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setError('');
+                }}
                 className="w-full px-4 py-3 rounded-lg bg-accent-800/50 border border-accent-700 text-white placeholder-accent-500 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
-                placeholder="Enter your username"
+                placeholder="Choose a username (3+ characters)"
                 required
+                minLength={3}
               />
             </div>
 
@@ -73,17 +104,45 @@ export default function Login({ onLogin, onSignUp }: LoginProps) {
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError('');
+                }}
                 className="w-full px-4 py-3 rounded-lg bg-accent-800/50 border border-accent-700 text-white placeholder-accent-500 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
-                placeholder="Enter your password"
+                placeholder="Enter password (6+ characters)"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-accent-200 mb-2">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setError('');
+                }}
+                className="w-full px-4 py-3 rounded-lg bg-accent-800/50 border border-accent-700 text-white placeholder-accent-500 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
+                placeholder="Confirm your password"
                 required
               />
             </div>
 
             {error && (
-              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-start">
-                <span className="mr-3 mt-0.5">⚠</span>
+              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <span>{error}</span>
+              </div>
+            )}
+
+            {success && (
+              <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-green-300 text-sm flex items-start space-x-3">
+                <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span>{success}</span>
               </div>
             )}
 
@@ -95,30 +154,30 @@ export default function Login({ onLogin, onSignUp }: LoginProps) {
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-accent-900/30 border-t-accent-900 rounded-full animate-spin"></div>
-                  <span>Signing in...</span>
+                  <span>Creating Account...</span>
                 </>
               ) : (
                 <>
                   <LogIn className="w-5 h-5" />
-                  <span>Sign In</span>
+                  <span>Create Account</span>
                 </>
               )}
             </button>
           </form>
 
-          {/* Sign Up Link */}
-          <p className="text-center text-accent-500 text-sm mt-6">
-            Don't have an account?{' '}
+          {/* Link back to login */}
+          <p className="text-center text-accent-500 text-sm mt-8">
+            Already have an account?{' '}
             <button
-              onClick={onSignUp}
+              onClick={onBackToLogin}
               className="text-primary-400 hover:text-primary-300 font-semibold transition"
             >
-              Create one
+              Sign in
             </button>
           </p>
 
           {/* Footer */}
-          <p className="text-center text-accent-500 text-xs mt-8">
+          <p className="text-center text-accent-500 text-xs mt-6">
             Powered by Neobotix MP 400
           </p>
         </div>

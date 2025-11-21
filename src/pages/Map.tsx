@@ -43,7 +43,19 @@ export default function Map() {
       const data = await maps.getMerged();
       setMapData(data);
     } catch (error) {
-      console.log('No map data available');
+      console.log('No map data available, using default view');
+      // Use mock map data
+      setMapData({
+        width: 100,
+        height: 100,
+        shelves: [
+          { x: 20, y: 20, coords: [1, 1], level: 1 },
+          { x: 50, y: 20, coords: [1, 2], level: 1 },
+          { x: 80, y: 20, coords: [1, 3], level: 1 },
+          { x: 20, y: 50, coords: [2, 1], level: 2 },
+        ],
+        robots: [],
+      });
     }
   };
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bot, Plus, Edit, Trash2, X, Battery, Cpu, Thermometer, Activity } from 'lucide-react';
+import { Bot, Plus, Edit, Trash2, X, Battery, Cpu, Thermometer, Activity, AlertCircle } from 'lucide-react';
 import { robots } from '../services/api';
 import { connectWebSocket } from '../services/websocket';
 
@@ -7,6 +7,7 @@ export default function Robots() {
   const [robotList, setRobotList] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingRobot, setEditingRobot] = useState<any>(null);
+  const [backendStatus, setBackendStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [formData, setFormData] = useState({
     name: '',
     robot_id: '',
@@ -41,6 +42,7 @@ export default function Robots() {
     const statusInterval = setInterval(async () => {
       try {
         const updatedRobots = await robots.list();
+        setBackendStatus('connected');
         setRobotList((prev) =>
           prev.map((currentRobot) => {
             const updated = updatedRobots.find((r: any) => r.id === currentRobot.id);
@@ -48,6 +50,7 @@ export default function Robots() {
           })
         );
       } catch (error) {
+        setBackendStatus('disconnected');
         console.error('Failed to refresh robot status:', error);
       }
     }, 5000);
@@ -61,8 +64,15 @@ export default function Robots() {
   }, []);
 
   const loadRobots = async () => {
-    const data = await robots.list();
-    setRobotList(data);
+    try {
+      const data = await robots.list();
+      setBackendStatus('connected');
+      setRobotList(data);
+    } catch (error) {
+      setBackendStatus('disconnected');
+      console.error('Failed to load robots:', error);
+      setRobotList([]);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -137,6 +147,21 @@ export default function Robots() {
 
   return (
     <div className="space-y-8">
+      {/* Backend Status Banner */}
+      {backendStatus === 'disconnected' && (
+        <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-yellow-300" />
+            <div>
+              <p className="font-semibold text-sm text-yellow-300">Backend Server Not Connected</p>
+              <p className="text-xs text-yellow-400 mt-2">The Flask backend is not running on <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">localhost:5000</code></p>
+              <p className="text-xs text-yellow-400 mt-2">Start the backend server from: <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">/home/super/Desktop/warebot-backend</code></p>
+              <p className="text-xs text-yellow-300 mt-2">Command: <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">python main.py</code></p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

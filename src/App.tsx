@@ -12,6 +12,7 @@ import { connectWebSocket, disconnectWebSocket } from './services/websocket';
 import { auth } from './services/api';
 
 import Login from './pages/Login';
+import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Robots from './pages/Robots';
@@ -20,9 +21,11 @@ import Tasks from './pages/Tasks';
 import MapPage from './pages/Map';
 
 type Page = 'dashboard' | 'products' | 'robots' | 'shelves' | 'tasks' | 'map';
+type AuthPage = 'login' | 'register';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authPage, setAuthPage] = useState<AuthPage>('login');
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
 
   useEffect(() => {
@@ -45,7 +48,19 @@ function App() {
   };
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <div className="transition-all duration-500 ease-in-out">
+        {authPage === 'login' ? (
+          <div className="animate-fadeIn">
+            <Login onLogin={handleLogin} onSignUp={() => setAuthPage('register')} />
+          </div>
+        ) : (
+          <div className="animate-fadeIn">
+            <Register onRegisterSuccess={handleLogin} onBackToLogin={() => setAuthPage('login')} />
+          </div>
+        )}
+      </div>
+    );
   }
 
   const navItems = [

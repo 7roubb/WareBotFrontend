@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { TrendingUp, Package, Grid, Activity } from 'lucide-react';
+import { TrendingUp, Package, Grid, Activity, AlertCircle } from 'lucide-react';
 import { dashboard } from '../services/api';
 
 export default function Dashboard() {
   const [topMoving, setTopMoving] = useState<any[]>([]);
   const [shelfSummary, setShelfSummary] = useState<any[]>([]);
   const [dailyMovements, setDailyMovements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [backendStatus, setBackendStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
 
   useEffect(() => {
     loadData();
@@ -15,21 +18,73 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
+      setError(null);
+      setBackendStatus('checking');
       const [top, shelves, daily] = await Promise.all([
-        dashboard.topMoving(),
-        dashboard.shelves(),
-        dashboard.daily(),
+        dashboard.topMoving().catch(err => {
+          setBackendStatus('disconnected');
+          console.error('Failed to load top moving products:', err);
+          return [];
+        }),
+        dashboard.shelves().catch(err => {
+          setBackendStatus('disconnected');
+          console.error('Failed to load shelves:', err);
+          // Return mock data when backend fails
+          return [
+            { shelf_id: 'S1', coords: [1, 1], level: 1, products: 5, total_items: 25 },
+            { shelf_id: 'S2', coords: [1, 2], level: 1, products: 8, total_items: 40 },
+            { shelf_id: 'S3', coords: [2, 1], level: 2, products: 3, total_items: 15 },
+          ];
+        }),
+        dashboard.daily().catch(err => {
+          setBackendStatus('disconnected');
+          console.error('Failed to load daily movements:', err);
+          return [];
+        }),
       ]);
-      setTopMoving(top);
-      setShelfSummary(shelves);
-      setDailyMovements(daily);
+      setTopMoving(Array.isArray(top) ? top : []);
+      setShelfSummary(Array.isArray(shelves) ? shelves : []);
+      setDailyMovements(Array.isArray(daily) ? daily : []);
+      if (backendStatus !== 'disconnected') {
+        setBackendStatus('connected');
+      }
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
+      setBackendStatus('disconnected');
+      setError('Unable to load some dashboard data. Showing fallback data.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="space-y-8">
+      {/* Backend Status Banner */}
+      {backendStatus === 'disconnected' && (
+        <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-yellow-300" />
+            <div>
+              <p className="font-semibold text-sm text-yellow-300">Backend Server Not Connected</p>
+              <p className="text-xs text-yellow-400 mt-2">The Flask backend is not running on <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">localhost:5000</code></p>
+              <p className="text-xs text-yellow-400 mt-2">Start the backend server from: <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">/home/super/Desktop/warebot-backend</code></p>
+              <p className="text-xs text-yellow-300 mt-2">Command: <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">python main.py</code></p>
+              <p className="text-xs text-yellow-300 mt-2">✓ Currently showing fallback data</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Banner */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 flex items-start space-x-3">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-sm">{error}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

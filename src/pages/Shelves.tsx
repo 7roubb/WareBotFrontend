@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Grid, Plus, Edit, Trash2, X } from 'lucide-react';
+import { Grid, Plus, Edit, Trash2, X, Package } from 'lucide-react';
 import { shelves } from '../services/api';
 
 export default function Shelves() {
   const [shelfList, setShelfList] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [editingShelf, setEditingShelf] = useState<any>(null);
+  const [selectedShelf, setSelectedShelf] = useState<any>(null);
+  const [shelfProducts, setShelfProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [formData, setFormData] = useState({
     warehouse_id: '',
     x_coord: 0,
@@ -76,6 +80,26 @@ export default function Shelves() {
     setEditingShelf(null);
   };
 
+  const openDetailModal = async (shelf: any) => {
+    setSelectedShelf(shelf);
+    setLoadingProducts(true);
+    try {
+      const products = await shelves.getProducts(shelf.id);
+      setShelfProducts(Array.isArray(products) ? products : products.products || []);
+    } catch (error) {
+      console.error('Failed to load shelf products:', error);
+      setShelfProducts([]);
+    }
+    setLoadingProducts(false);
+    setShowDetailModal(true);
+  };
+
+  const closeDetailModal = () => {
+    setShowDetailModal(false);
+    setSelectedShelf(null);
+    setShelfProducts([]);
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -98,7 +122,8 @@ export default function Shelves() {
         {shelfList.map((shelf) => (
           <div
             key={shelf.id}
-            className="group bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden hover:border-primary-500 hover:shadow-neo transition duration-300"
+            onClick={() => openDetailModal(shelf)}
+            className="group bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden hover:border-primary-500 hover:shadow-neo transition duration-300 cursor-pointer"
           >
             {/* Header */}
             <div className="bg-accent-800/50 p-6 border-b border-accent-700">
@@ -279,6 +304,125 @@ export default function Shelves() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDetailModal && selectedShelf && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-gradient-card rounded-xl shadow-neo max-w-2xl w-full border border-accent-700 max-h-[80vh] overflow-y-auto">
+            <div className="bg-accent-800/80 text-white p-6 flex items-center justify-between border-b border-accent-700 sticky top-0">
+              <div>
+                <h2 className="text-2xl font-bold">
+                  Shelf ({selectedShelf.x_coord}, {selectedShelf.y_coord})
+                </h2>
+                <p className="text-sm text-accent-400 mt-1">Level {selectedShelf.level}</p>
+              </div>
+              <button
+                onClick={closeDetailModal}
+                className="hover:bg-accent-700 p-2 rounded-lg transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Shelf Info */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
+                  <div className="text-xs text-accent-400 mb-2">Warehouse</div>
+                  <p className="text-lg font-bold text-primary-300">{selectedShelf.warehouse_id}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
+                  <div className="text-xs text-accent-400 mb-2">Status</div>
+                  <p className="text-lg font-bold text-primary-300">{selectedShelf.status}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
+                  <div className="text-xs text-accent-400 mb-2">Availability</div>
+                  <p className="text-lg font-bold text-primary-300">
+                    {selectedShelf.available ? 'Available' : 'Occupied'}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
+                  <div className="text-xs text-accent-400 mb-2">Products</div>
+                  <p className="text-lg font-bold text-primary-300">{shelfProducts.length}</p>
+                </div>
+              </div>
+
+              {/* Products Section */}
+              <div>
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+                  <Package className="w-5 h-5 text-primary-400" />
+                  <span>Shelf Contents</span>
+                </h3>
+
+                {loadingProducts ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin">
+                      <Package className="w-8 h-8 text-primary-400" />
+                    </div>
+                    <p className="text-accent-400 mt-3">Loading products...</p>
+                  </div>
+                ) : shelfProducts.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Package className="w-16 h-16 text-accent-600 mx-auto mb-4 opacity-50" />
+                    <p className="text-accent-400 text-lg">This shelf is empty</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {shelfProducts.map((product, idx) => (
+                      <div
+                        key={idx}
+                        className="p-4 rounded-lg border border-accent-700 bg-accent-800/30 hover:border-primary-500/50 transition"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-bold text-white mb-2">
+                              {product.name || product.product_name || 'Unknown Product'}
+                            </h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                              {product.sku && (
+                                <div>
+                                  <span className="text-accent-500">SKU:</span>
+                                  <p className="text-primary-300 font-semibold">{product.sku}</p>
+                                </div>
+                              )}
+                              {product.quantity !== undefined && (
+                                <div>
+                                  <span className="text-accent-500">Quantity:</span>
+                                  <p className="text-primary-300 font-semibold">{product.quantity}</p>
+                                </div>
+                              )}
+                              {product.category && (
+                                <div>
+                                  <span className="text-accent-500">Category:</span>
+                                  <p className="text-primary-300 font-semibold">{product.category}</p>
+                                </div>
+                              )}
+                              {product.price && (
+                                <div>
+                                  <span className="text-accent-500">Price:</span>
+                                  <p className="text-primary-300 font-semibold">${product.price}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-accent-800/50 border-t border-accent-700 p-6 sticky bottom-0">
+              <button
+                onClick={closeDetailModal}
+                className="w-full px-6 py-3 bg-accent-700 text-accent-200 rounded-lg font-semibold hover:bg-accent-600 transition"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

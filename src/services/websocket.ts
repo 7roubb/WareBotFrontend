@@ -2,10 +2,16 @@ import { io, Socket } from 'socket.io-client';
 
 let socket: Socket | null = null;
 
+// Determine WebSocket URL - use window.location.hostname for the same host
+const getWebSocketUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.hostname}:5000`;
+};
+
 export const connectWebSocket = () => {
   if (socket) return socket;
 
-  socket = io('http://localhost:5000', {
+  socket = io(getWebSocketUrl(), {
     transports: ['websocket'],
   });
 
