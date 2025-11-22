@@ -102,6 +102,7 @@ export default function Shelves() {
 
   return (
     <div className="space-y-8">
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -148,11 +149,66 @@ export default function Shelves() {
 
             {/* Content */}
             <div className="p-6 space-y-4">
+
+              {/* ⭐ NEW — AprilTag Logo */}
+              {shelf.april_tag_url && (
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(shelf.april_tag_url, "_blank");
+                  }}
+                  className="flex items-center space-x-2 p-2 rounded-lg bg-accent-800/40 border border-accent-700 
+                             cursor-pointer hover:bg-accent-700/40 transition w-fit"
+                >
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  className="w-8 h-8"
+>
+  <defs>
+    <linearGradient id="goldA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#F8E47A" />
+      <stop offset="50%" stopColor="#F5D742" />
+      <stop offset="100%" stopColor="#E8C93B" />
+    </linearGradient>
+
+    <linearGradient id="goldB" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stopColor="#FFF9C4" />
+      <stop offset="100%" stopColor="#F5D742" />
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="56" height="56" rx="10" fill="none" stroke="url(#goldA)" strokeWidth="3" />
+
+  <rect x="10" y="10" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3"/>
+  <rect x="14" y="14" width="6" height="6" rx="1" fill="url(#goldB)" />
+
+  <rect x="40" y="10" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3"/>
+  <rect x="44" y="14" width="6" height="6" rx="1" fill="url(#goldB)" />
+
+  <rect x="10" y="40" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3"/>
+  <rect x="14" y="44" width="6" height="6" rx="1" fill="url(#goldB)" />
+
+  <rect x="30" y="30" width="6" height="6" fill="url(#goldA)" rx="2" />
+  <rect x="40" y="30" width="6" height="6" fill="url(#goldA)" rx="2" />
+  <rect x="30" y="40" width="6" height="6" fill="url(#goldA)" rx="2" />
+  <rect x="46" y="40" width="6" height="6" fill="url(#goldA)" rx="2" />
+  <rect x="40" y="46" width="6" height="6" fill="url(#goldA)" rx="2" />
+  <rect x="48" y="48" width="6" height="6" fill="url(#goldB)" rx="2" />
+</svg>
+
+
+
+                  <span className="text-accent-300 text-sm">View Tag</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-lg bg-primary-500/10 border border-primary-500/20">
                   <div className="text-xs text-accent-400 mb-1">Warehouse</div>
                   <p className="text-lg font-bold text-primary-300">{shelf.warehouse_id}</p>
                 </div>
+
                 <div className="p-3 rounded-lg bg-primary-500/10 border border-primary-500/20">
                   <div className="text-xs text-accent-400 mb-1">Availability</div>
                   <p className="text-lg font-bold text-primary-300">
@@ -177,14 +233,20 @@ export default function Shelves() {
                   <span className="text-sm">Delete</span>
                 </button>
               </div>
+
             </div>
           </div>
         ))}
       </div>
 
+      {/* ---------------------- */}
+      {/*   ADD / EDIT MODAL     */}
+      {/* ---------------------- */}
+
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-gradient-card rounded-xl shadow-neo max-w-md w-full border border-accent-700">
+
             <div className="bg-accent-800/80 text-white p-6 flex items-center justify-between border-b border-accent-700">
               <h2 className="text-2xl font-bold">
                 {editingShelf ? 'Edit Shelf' : 'Add Shelf'}
@@ -198,6 +260,7 @@ export default function Shelves() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              
               <div>
                 <label className="block text-sm font-medium text-accent-300 mb-2">
                   Warehouse ID *
@@ -208,12 +271,14 @@ export default function Shelves() {
                   onChange={(e) =>
                     setFormData({ ...formData, warehouse_id: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
+                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white 
+                             focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                
                 <div>
                   <label className="block text-sm font-medium text-accent-300 mb-2">
                     X Coordinate *
@@ -224,7 +289,8 @@ export default function Shelves() {
                     onChange={(e) =>
                       setFormData({ ...formData, x_coord: parseInt(e.target.value) })
                     }
-                    className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
+                    className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white 
+                               focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
                     required
                   />
                 </div>
@@ -239,10 +305,12 @@ export default function Shelves() {
                     onChange={(e) =>
                       setFormData({ ...formData, y_coord: parseInt(e.target.value) })
                     }
-                    className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
+                    className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white 
+                               focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
                     required
                   />
                 </div>
+
               </div>
 
               <div>
@@ -255,7 +323,8 @@ export default function Shelves() {
                   onChange={(e) =>
                     setFormData({ ...formData, level: parseInt(e.target.value) })
                   }
-                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
+                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white 
+                             focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
                   required
                 />
               </div>
@@ -267,7 +336,8 @@ export default function Shelves() {
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
+                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white 
+                             focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition"
                 >
                   <option value="IDLE">IDLE</option>
                   <option value="BUSY">BUSY</option>
@@ -295,6 +365,7 @@ export default function Shelves() {
                 >
                   {editingShelf ? 'Update Shelf' : 'Create Shelf'}
                 </button>
+
                 <button
                   type="button"
                   onClick={closeModal}
@@ -303,14 +374,21 @@ export default function Shelves() {
                   Cancel
                 </button>
               </div>
+
             </form>
           </div>
         </div>
       )}
 
+      {/* --------------- */}
+      {/* DETAIL MODAL    */}
+      {/* --------------- */}
+
       {showDetailModal && selectedShelf && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-gradient-card rounded-xl shadow-neo max-w-2xl w-full border border-accent-700 max-h-[80vh] overflow-y-auto">
+
+            {/* Top Bar */}
             <div className="bg-accent-800/80 text-white p-6 flex items-center justify-between border-b border-accent-700 sticky top-0">
               <div>
                 <h2 className="text-2xl font-bold">
@@ -327,26 +405,32 @@ export default function Shelves() {
             </div>
 
             <div className="p-6 space-y-6">
+              
               {/* Shelf Info */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
                 <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
                   <div className="text-xs text-accent-400 mb-2">Warehouse</div>
                   <p className="text-lg font-bold text-primary-300">{selectedShelf.warehouse_id}</p>
                 </div>
+
                 <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
                   <div className="text-xs text-accent-400 mb-2">Status</div>
                   <p className="text-lg font-bold text-primary-300">{selectedShelf.status}</p>
                 </div>
+
                 <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
                   <div className="text-xs text-accent-400 mb-2">Availability</div>
                   <p className="text-lg font-bold text-primary-300">
                     {selectedShelf.available ? 'Available' : 'Occupied'}
                   </p>
                 </div>
+
                 <div className="p-4 rounded-lg bg-primary-500/10 border border-primary-500/20">
                   <div className="text-xs text-accent-400 mb-2">Products</div>
                   <p className="text-lg font-bold text-primary-300">{shelfProducts.length}</p>
                 </div>
+
               </div>
 
               {/* Products Section */}
@@ -380,39 +464,49 @@ export default function Shelves() {
                             <h4 className="font-bold text-white mb-2">
                               {product.name || product.product_name || 'Unknown Product'}
                             </h4>
+
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+
                               {product.sku && (
                                 <div>
                                   <span className="text-accent-500">SKU:</span>
                                   <p className="text-primary-300 font-semibold">{product.sku}</p>
                                 </div>
                               )}
+
                               {product.quantity !== undefined && (
                                 <div>
                                   <span className="text-accent-500">Quantity:</span>
                                   <p className="text-primary-300 font-semibold">{product.quantity}</p>
                                 </div>
                               )}
+
                               {product.category && (
                                 <div>
                                   <span className="text-accent-500">Category:</span>
                                   <p className="text-primary-300 font-semibold">{product.category}</p>
                                 </div>
                               )}
+
                               {product.price && (
                                 <div>
                                   <span className="text-accent-500">Price:</span>
                                   <p className="text-primary-300 font-semibold">${product.price}</p>
                                 </div>
                               )}
+
                             </div>
+
                           </div>
                         </div>
+
                       </div>
                     ))}
                   </div>
                 )}
+
               </div>
+
             </div>
 
             <div className="bg-accent-800/50 border-t border-accent-700 p-6 sticky bottom-0">
@@ -423,9 +517,11 @@ export default function Shelves() {
                 Close
               </button>
             </div>
+
           </div>
         </div>
       )}
+
     </div>
   );
 }
