@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Grid, Plus, Edit, Trash2, X, Package } from 'lucide-react';
+import { Grid, Plus, Edit, Trash2, X, Package, AlertCircle } from 'lucide-react';
 import { shelves } from '../services/api';
+import { connectWebSocket } from '../services/websocket';
 
 export default function Shelves() {
   const [shelfList, setShelfList] = useState<any[]>([]);
@@ -10,6 +11,7 @@ export default function Shelves() {
   const [selectedShelf, setSelectedShelf] = useState<any>(null);
   const [shelfProducts, setShelfProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     warehouse_id: '',
     x_coord: 0,
@@ -21,32 +23,61 @@ export default function Shelves() {
 
   useEffect(() => {
     loadShelves();
+
+    // Subscribe to real-time shelf updates via WebSocket
+    const socket = connectWebSocket();
+    if (socket) {
+      socket.on('shelf_update', (data) => {
+        setShelfList((prev) =>
+          prev.map((s) => (s.id === data.id ? { ...s, ...data } : s))
+        );
+      });
+    }
+
+    return () => {
+      if (socket) socket.off('shelf_update');
+    };
   }, []);
 
   const loadShelves = async () => {
-    const data = await shelves.list();
-    setShelfList(data);
+    try {
+      setError(null);
+      const data = await shelves.list();
+      setShelfList(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Failed to load shelves:', err);
+      setError(err?.message || 'Failed to load shelves');
+      setShelfList([]);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setError(null);
       if (editingShelf) {
         await shelves.update(editingShelf.id, formData);
       } else {
         await shelves.create(formData);
       }
-      loadShelves();
+      await loadShelves();
       closeModal();
-    } catch (error) {
-      console.error('Failed to save shelf:', error);
+    } catch (err: any) {
+      console.error('Failed to save shelf:', err);
+      setError(err?.message || 'Failed to save shelf');
     }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Delete this shelf?')) {
-      await shelves.delete(id);
-      loadShelves();
+      try {
+        setError(null);
+        await shelves.delete(id);
+        await loadShelves();
+      } catch (err: any) {
+        console.error('Failed to delete shelf:', err);
+        setError(err?.message || 'Failed to delete shelf');
+      }
     }
   };
 
@@ -84,10 +115,12 @@ export default function Shelves() {
     setSelectedShelf(shelf);
     setLoadingProducts(true);
     try {
+      setError(null);
       const products = await shelves.getProducts(shelf.id);
-      setShelfProducts(Array.isArray(products) ? products : products.products || []);
-    } catch (error) {
-      console.error('Failed to load shelf products:', error);
+      setShelfProducts(Array.isArray(products) ? products : []);
+    } catch (err: any) {
+      console.error('Failed to load shelf products:', err);
+      setError(err?.message || 'Failed to load shelf products');
       setShelfProducts([]);
     }
     setLoadingProducts(false);
@@ -102,6 +135,21 @@ export default function Shelves() {
 
   return (
     <div className="space-y-8">
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-900/40 border border-red-700 rounded-lg p-4 flex items-center space-x-3">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm text-red-100">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="mt-2 text-xs text-red-300 hover:text-red-200 font-semibold"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">

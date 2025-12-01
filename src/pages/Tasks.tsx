@@ -5,28 +5,23 @@ import { connectWebSocket } from '../services/websocket';
 
 export default function Tasks() {
   const [taskList, setTaskList] = useState<any[]>([]);
-  const [robotList, setRobotList] = useState<any[]>([]);
   const [shelfList, setShelfList] = useState<any[]>([]);
   const [zoneList, setZoneList] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
 
-  // All numeric inputs stored as strings (TypeScript-friendly)
+  // Form data for new task
   const [formData, setFormData] = useState({
-    robot_id: '',
-    target_x: '0',
-    target_y: '0',
-    target_yaw: '0',
+    shelf_id: '',
+    task_type: 'PICKUP_AND_DELIVER',
     priority: '1',
-    reference_point_x: '',
-    reference_point_y: '',
-    reference_point_yaw: '',
     description: '',
     zone_id: '',
+    target_shelf_id: '',
+    target_zone_id: '',
   });
 
   useEffect(() => {
     loadTasks();
-    loadRobots();
     loadShelves();
     loadZones();
 
@@ -56,18 +51,6 @@ export default function Tasks() {
     }
   };
 
-  const loadRobots = async () => {
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || ''}/api/robots`
-      );
-      const data = await res.json();
-      setRobotList(Array.isArray(data) ? data : data.results || []);
-    } catch (error) {
-      console.error('Failed to load robots:', error);
-    }
-  };
-
   const loadShelves = async () => {
     try {
       const data = await shelves.list();
@@ -90,73 +73,49 @@ export default function Tasks() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Compute nearest shelf from entered target coordinates (backend currently requires shelf_id)
-    const tx = Number(formData.target_x);
-    const ty = Number(formData.target_y);
-
     try {
-      // Ensure shelves are loaded
-      if (!shelfList || shelfList.length === 0) {
-        await loadShelves();
-      }
-
-      if (!shelfList || shelfList.length === 0) {
-        throw new Error('No shelves available to map coordinates to a shelf_id');
-      }
-
-      let nearest = shelfList[0];
-      let bestDist = Number.POSITIVE_INFINITY;
-      for (const s of shelfList) {
-        const sx = Number(s.x_coord ?? s.x ?? 0);
-        const sy = Number(s.y_coord ?? s.y ?? 0);
-        const d = (sx - tx) * (sx - tx) + (sy - ty) * (sy - ty);
-        if (d < bestDist) {
-          bestDist = d;
-          nearest = s;
-        }
-      }
-
       const payload: any = {
-        shelf_id: nearest.id || nearest._id || nearest.shelf_id,
+        shelf_id: formData.shelf_id,
         priority: Number(formData.priority) || 1,
+        task_type: formData.task_type,
       };
 
-      // include optional description and zone_id if provided
+      // Add optional fields
       if (formData.description && formData.description.trim() !== '') {
         payload.description = formData.description.trim();
       }
       if (formData.zone_id && formData.zone_id !== '') {
         payload.zone_id = formData.zone_id;
       }
-      // Include original coords as extra info (backend should ignore unknown fields)
-      payload.requested_target_x = tx;
-      payload.requested_target_y = ty;
-      payload.requested_target_yaw = Number(formData.target_yaw || 0);
+      if (formData.target_shelf_id && formData.target_shelf_id !== '') {
+        payload.target_shelf_id = formData.target_shelf_id;
+      }
+      if (formData.target_zone_id && formData.target_zone_id !== '') {
+        payload.target_zone_id = formData.target_zone_id;
+      }
 
-      console.log('Assigning task mapped to shelf:', nearest, 'payload:', payload);
+      console.log('Creating task with payload:', payload);
 
       await tasks.create(payload);
       await loadTasks();
       closeModal();
-      alert(`Task assigned to shelf ${payload.shelf_id}`);
-    } catch (error) {
-      console.error('Failed to assign task:', error);
-      alert(`Failed to assign task: ${error}`);
+      alert(`Task created successfully`);
+    } catch (error: any) {
+      console.error('Failed to create task:', error);
+      const msg = error?.message || String(error);
+      alert(`Failed to create task: ${msg}`);
     }
   };
 
   const openModal = () => {
     setFormData({
-      robot_id: '',
-      target_x: '0',
-      target_y: '0',
-      target_yaw: '0',
+      shelf_id: '',
+      task_type: 'PICKUP_AND_DELIVER',
       priority: '1',
-      reference_point_x: '',
-      reference_point_y: '',
-      reference_point_yaw: '',
       description: '',
       zone_id: '',
+      target_shelf_id: '',
+      target_zone_id: '',
     });
     setShowModal(true);
   };
@@ -231,21 +190,35 @@ export default function Tasks() {
                 </div>
 
                 <div className="p-3 rounded-lg bg-primary-500/10 border border-primary-500/20">
-                  <div className="text-xs text-accent-400 mb-1">Robot</div>
-                  <p className="text-sm font-bold text-primary-300">
-                    {task.assigned_robot_name || '--'}
-                  </p>
+                  <div className="text-xs text-accent-400 mb-1">Type</div>
+                  <p className="text-sm font-bold text-primary-300">{task.task_type || 'PICKUP_AND_DELIVER'}</p>
                 </div>
               </div>
 
+              <div className="p-3 rounded-lg bg-primary-500/10 border border-primary-500/20">
+                <div className="text-xs text-accent-400 mb-1">Assigned Robot</div>
+                <p className="text-sm font-bold text-primary-300">
+                  {task.assigned_robot_name || '--'}
+                </p>
+              </div>
+
               <div className="p-3 rounded-lg bg-accent-800/50 border border-accent-700">
-                <div className="text-xs text-accent-400 mb-1">Target / Pickup Coordinates</div>
+                <div className="text-xs text-accent-400 mb-1">Pickup Coordinates</div>
                 <p className="text-sm font-mono text-accent-200">
                   X: {((task.pickup_x ?? task.target_x) !== undefined ? Number(task.pickup_x ?? task.target_x).toFixed(2) : '—')},
                   Y: {((task.pickup_y ?? task.target_y) !== undefined ? Number(task.pickup_y ?? task.target_y).toFixed(2) : '—')},
                   Yaw: {((task.pickup_yaw ?? task.target_yaw) !== undefined ? Number(task.pickup_yaw ?? task.target_yaw).toFixed(2) : '—')}°
                 </p>
               </div>
+
+              {task.drop_x !== undefined && task.drop_y !== undefined && (task.drop_x !== task.pickup_x || task.drop_y !== task.pickup_y) && (
+                <div className="p-3 rounded-lg bg-accent-800/50 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-1">Drop Coordinates</div>
+                  <p className="text-sm font-mono text-accent-200">
+                    X: {Number(task.drop_x).toFixed(2)}, Y: {Number(task.drop_y).toFixed(2)}, Yaw: {Number(task.drop_yaw ?? 0).toFixed(2)}°
+                  </p>
+                </div>
+              )}
 
               <div className="p-3 rounded-lg bg-accent-800/50 border border-accent-700">
                 <div className="text-xs text-accent-400 mb-1">Priority</div>
@@ -277,71 +250,42 @@ export default function Tasks() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-accent-300 mb-2">
-                  Robot *
+                  Source Shelf *
                 </label>
                 <select
-                  value={formData.robot_id}
+                  value={formData.shelf_id}
                   onChange={(e) =>
-                    setFormData({ ...formData, robot_id: e.target.value })
+                    setFormData({ ...formData, shelf_id: e.target.value })
                   }
                   className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white"
+                  required
                 >
-                  <option value="">Select a robot</option>
-                  {robotList.map((robot) => (
-                    <option key={robot.id} value={robot.robot_id}>
-                      {robot.name} ({robot.robot_id})
+                  <option value="">Select a shelf to pick from</option>
+                  {shelfList.map((shelf) => (
+                    <option key={shelf.id} value={shelf.id}>
+                      Shelf @ ({Number(shelf.x_coord ?? shelf.x ?? 0).toFixed(1)}, {Number(shelf.y_coord ?? shelf.y ?? 0).toFixed(1)})
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-accent-300 mb-2">
-                    Target X *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.target_x}
-                    onChange={(e) =>
-                      setFormData({ ...formData, target_x: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-accent-800/50 border border-accent-700 rounded-lg text-white"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-accent-300 mb-2">
-                    Target Y *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.target_y}
-                    onChange={(e) =>
-                      setFormData({ ...formData, target_y: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-accent-800/50 border border-accent-700 rounded-lg text-white"
-                    required
-                  />
-                </div>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-accent-300 mb-2">
-                  Target Yaw
+                  Task Type *
                 </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={formData.target_yaw}
+                <select
+                  value={formData.task_type}
                   onChange={(e) =>
-                    setFormData({ ...formData, target_yaw: e.target.value })
+                    setFormData({ ...formData, task_type: e.target.value })
                   }
-                  className="w-full px-4 py-2 bg-accent-800/50 border border-accent-700 rounded-lg text-white"
-                />
+                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white"
+                  required
+                >
+                  <option value="PICKUP_AND_DELIVER">Pick & Deliver (to Zone)</option>
+                  <option value="MOVE_SHELF">Move Shelf (to Location)</option>
+                  <option value="RETURN_SHELF">Return Shelf (to Storage)</option>
+                  <option value="REPOSITION">Reposition (in Warehouse)</option>
+                </select>
               </div>
 
               <div>
@@ -360,31 +304,79 @@ export default function Tasks() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-accent-300 mb-2">
-                  Drop Zone (optional)
-                </label>
-                <select
-                  value={formData.zone_id}
-                  onChange={(e) => setFormData({ ...formData, zone_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white"
-                >
-                  <option value="">No drop zone</option>
-                  {zoneList.map((z) => (
-                    <option key={z.id} value={z.id}>
-                      {z.name || z.zone_id}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Conditional fields based on task type */}
+              {(formData.task_type === 'PICKUP_AND_DELIVER') && (
+                <div>
+                  <label className="block text-sm font-medium text-accent-300 mb-2">
+                    Delivery Zone (optional)
+                  </label>
+                  <select
+                    value={formData.zone_id}
+                    onChange={(e) => setFormData({ ...formData, zone_id: e.target.value })}
+                    className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white"
+                  >
+                    <option value="">No specific zone</option>
+                    {zoneList.map((z) => (
+                      <option key={z.id} value={z.id}>
+                        {z.name || z.zone_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {(formData.task_type === 'MOVE_SHELF') && (
+                <div>
+                  <label className="block text-sm font-medium text-accent-300 mb-2">
+                    Target Shelf Location *
+                  </label>
+                  <select
+                    value={formData.target_shelf_id}
+                    onChange={(e) => setFormData({ ...formData, target_shelf_id: e.target.value })}
+                    className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white"
+                    required={formData.task_type === 'MOVE_SHELF'}
+                  >
+                    <option value="">Select target location</option>
+                    {shelfList.filter((s) => s.id !== formData.shelf_id).map((shelf) => (
+                      <option key={shelf.id} value={shelf.id}>
+                        Shelf @ ({Number(shelf.x_coord ?? shelf.x ?? 0).toFixed(1)}, {Number(shelf.y_coord ?? shelf.y ?? 0).toFixed(1)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {(formData.task_type === 'REPOSITION') && (
+                <div>
+                  <label className="block text-sm font-medium text-accent-300 mb-2">
+                    Target Zone *
+                  </label>
+                  <select
+                    value={formData.target_zone_id}
+                    onChange={(e) => setFormData({ ...formData, target_zone_id: e.target.value })}
+                    className="w-full px-4 py-2 border border-accent-700 rounded-lg bg-accent-800/50 text-white"
+                    required={formData.task_type === 'REPOSITION'}
+                  >
+                    <option value="">Select target zone</option>
+                    {zoneList.map((z) => (
+                      <option key={z.id} value={z.id}>
+                        {z.name || z.zone_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
-                <label className="block text-sm font-medium text-accent-300 mb-2">Description (optional)</label>
+                <label className="block text-sm font-medium text-accent-300 mb-2">
+                  Description (optional)
+                </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full px-4 py-2 bg-accent-800/50 border border-accent-700 rounded-lg text-white"
-                  rows={3}
+                  rows={2}
+                  placeholder="Add task notes..."
                 />
               </div>
 
@@ -393,7 +385,7 @@ export default function Tasks() {
                   type="submit"
                   className="flex-1 bg-gradient-yellow text-accent-900 py-3 rounded-lg font-bold shadow-neo hover:shadow-neo-lg transition"
                 >
-                  Assign Task
+                  Create Task
                 </button>
 
                 <button

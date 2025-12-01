@@ -355,12 +355,16 @@ export const robots = {
 export const shelves = {
   list: async () => {
     const res = await fetch(`${API_URL}/shelves`);
-    return res.json();
+    const data = await handleResponse(res, '/shelves');
+    if (Array.isArray(data)) return data.map(sanitizeDoc);
+    if (data && Array.isArray(data.results)) return data.results.map(sanitizeDoc);
+    return sanitizeDoc(data);
   },
 
   get: async (id: string) => {
     const res = await fetch(`${API_URL}/shelves/${id}`);
-    return res.json();
+    const data = await handleResponse(res, `/shelves/${id}`);
+    return sanitizeDoc(data);
   },
 
   create: async (data: any) => {
@@ -369,7 +373,8 @@ export const shelves = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    const created = await handleResponse(res, '/shelves (POST)');
+    return sanitizeDoc(created);
   },
 
   update: async (id: string, data: any) => {
@@ -378,7 +383,18 @@ export const shelves = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    const updated = await handleResponse(res, `/shelves/${id} (PUT)`)
+    return sanitizeDoc(updated);
+  },
+
+  updateLocation: async (id: string, location: { x: number; y: number; yaw?: number }) => {
+    const res = await fetch(`${API_URL}/shelves/${id}/location`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(location),
+    });
+    const updated = await handleResponse(res, `/shelves/${id}/location (PUT)`);
+    return sanitizeDoc(updated);
   },
 
   delete: async (id: string) => {
@@ -386,14 +402,17 @@ export const shelves = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    return res.json();
+    return handleResponse(res, `/shelves/${id} (DELETE)`);
   },
 
   getProducts: async (id: string) => {
     const res = await fetch(`${API_URL}/shelves/${id}/products`, {
       headers: getHeaders(),
     });
-    return res.json();
+    const data = await handleResponse(res, `/shelves/${id}/products`);
+    if (Array.isArray(data)) return data.map(sanitizeDoc);
+    if (data && Array.isArray(data.products)) return data.products.map(sanitizeDoc);
+    return sanitizeDoc(data);
   },
 };
 
@@ -432,6 +451,12 @@ export const tasks = {
     const data = await handleResponse(res, '/tasks');
     if (Array.isArray(data)) return data.map(sanitizeDoc);
     if (data && Array.isArray(data.results)) return data.results.map(sanitizeDoc);
+    return sanitizeDoc(data);
+  },
+
+  get: async (id: string) => {
+    const res = await fetch(`${API_URL}/tasks/${id}`);
+    const data = await handleResponse(res, `/tasks/${id}`);
     return sanitizeDoc(data);
   },
 
@@ -506,6 +531,26 @@ export const dashboard = {
   daily: async () => {
     const res = await fetch(`${API_URL}/dashboard/daily`);
     return handleResponse(res, '/dashboard/daily');
+  },
+
+  liveTasks: async () => {
+    const res = await fetch(`${API_URL}/dashboard/live/tasks`);
+    return handleResponse(res, '/dashboard/live/tasks');
+  },
+
+  liveRobots: async () => {
+    const res = await fetch(`${API_URL}/dashboard/live/robots`);
+    return handleResponse(res, '/dashboard/live/robots');
+  },
+
+  liveSystem: async () => {
+    const res = await fetch(`${API_URL}/dashboard/live/system`);
+    return handleResponse(res, '/dashboard/live/system');
+  },
+
+  taskStats: async () => {
+    const res = await fetch(`${API_URL}/tasks/stats/live`);
+    return handleResponse(res, '/tasks/stats/live');
   },
 };
 

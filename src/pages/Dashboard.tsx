@@ -1,244 +1,311 @@
 import { useEffect, useState } from 'react';
-import { TrendingUp, Package, Grid, Activity, AlertCircle } from 'lucide-react';
+import { Activity, AlertCircle, CheckCircle, Zap, AlertTriangle, Battery } from 'lucide-react';
 import { dashboard } from '../services/api';
+import { connectWebSocket } from '../services/websocket';
 
 export default function Dashboard() {
-  const [topMoving, setTopMoving] = useState<any[]>([]);
-  const [shelfSummary, setShelfSummary] = useState<any[]>([]);
-  const [dailyMovements, setDailyMovements] = useState<any[]>([]);
+  const [systemStats, setSystemStats] = useState<any>(null);
+  const [taskStats, setTaskStats] = useState<any>(null);
+  const [robotStats, setRobotStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [backendStatus, setBackendStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 10000);
-    return () => clearInterval(interval);
+    loadStats();
+
+    // Refresh stats every 5 seconds
+    const interval = setInterval(loadStats, 5000);
+
+    // Connect to WebSocket for real-time updates
+    const socket = connectWebSocket();
+    if (socket) {
+      socket.on('system_update', (data) => {
+        setSystemStats(data);
+      });
+      socket.on('task_update', (data) => {
+        setTaskStats((prev: any) => ({
+          ...prev,
+          ...data,
+        }));
+      });
+      socket.on('robot_update', (data) => {
+        setRobotStats((prev: any) => ({
+          ...prev,
+          ...data,
+        }));
+      });
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (socket) {
+        socket.off('system_update');
+        socket.off('task_update');
+        socket.off('robot_update');
+      }
+    };
   }, []);
 
-  const loadData = async () => {
+  const loadStats = async () => {
     try {
       setError(null);
-      setBackendStatus('checking');
-      const [top, shelves, daily] = await Promise.all([
-        dashboard.topMoving().catch(err => {
-          setBackendStatus('disconnected');
-          console.error('Failed to load top moving products:', err);
-          return [];
-        }),
-        dashboard.shelves().catch(err => {
-          setBackendStatus('disconnected');
-          console.error('Failed to load shelves:', err);
-          // Return mock data when backend fails
-          return [
-            { shelf_id: 'S1', coords: [1, 1], level: 1, products: 5, total_items: 25 },
-            { shelf_id: 'S2', coords: [1, 2], level: 1, products: 8, total_items: 40 },
-            { shelf_id: 'S3', coords: [2, 1], level: 2, products: 3, total_items: 15 },
-          ];
-        }),
-        dashboard.daily().catch(err => {
-          setBackendStatus('disconnected');
-          console.error('Failed to load daily movements:', err);
-          return [];
-        }),
+      const [system, taskLive, robotLive] = await Promise.all([
+        dashboard.liveSystem(),
+        dashboard.taskStats(),
+        dashboard.liveRobots(),
       ]);
-      setTopMoving(Array.isArray(top) ? top : []);
-      setShelfSummary(Array.isArray(shelves) ? shelves : []);
-      setDailyMovements(Array.isArray(daily) ? daily : []);
-      if (backendStatus !== 'disconnected') {
-        setBackendStatus('connected');
-      }
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      setBackendStatus('disconnected');
-      setError('Unable to load some dashboard data. Showing fallback data.');
-    } finally {
+
+      setSystemStats(system);
+      setTaskStats(taskLive);
+      setRobotStats(robotLive);
+      setLoading(false);
+    } catch (err: any) {
+      console.error('Failed to load dashboard stats:', err);
+      setError(err?.message || 'Failed to load dashboard data');
       setLoading(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-accent-400">Loading dashboard...</div>
+      </div>
+    );
+  }
+
+  const health = systemStats?.health || {};
+  const tasks = systemStats?.tasks || taskStats || {};
+  const robots = systemStats?.robots || robotStats?.summary || {};
+  const resources = systemStats?.resources || {};
+
+  const healthColor = health.status === 'HEALTHY' ? 'text-green-400' : health.status === 'WARNING' ? 'text-yellow-400' : 'text-red-400';
+  const healthBg = health.status === 'HEALTHY' ? 'bg-green-500/10' : health.status === 'WARNING' ? 'bg-yellow-500/10' : 'bg-red-500/10';
+  const healthBorder = health.status === 'HEALTHY' ? 'border-green-500/30' : health.status === 'WARNING' ? 'border-yellow-500/30' : 'border-red-500/30';
+
   return (
     <div className="space-y-8">
-      {/* Backend Status Banner */}
-      {backendStatus === 'disconnected' && (
-        <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-          <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-yellow-300" />
-            <div>
-              <p className="font-semibold text-sm text-yellow-300">Backend Server Not Connected</p>
-              <p className="text-xs text-yellow-400 mt-2">The Flask backend is not running on <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">localhost:5000</code></p>
-              <p className="text-xs text-yellow-400 mt-2">Start the backend server from: <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">/home/super/Desktop/warebot-backend</code></p>
-              <p className="text-xs text-yellow-300 mt-2">Command: <code className="bg-black/30 px-2 py-1 rounded text-yellow-200 font-mono">python main.py</code></p>
-              <p className="text-xs text-yellow-300 mt-2">✓ Currently showing fallback data</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Header */}
+      <div>
+        <h1 className="text-4xl font-bold text-white mb-2">System Dashboard</h1>
+        <p className="text-accent-400">Real-time warehouse automation metrics</p>
+      </div>
 
       {/* Error Banner */}
       {error && (
-        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 flex items-start space-x-3">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+        <div className="bg-red-900/40 border border-red-700 rounded-lg p-4 flex items-center space-x-3">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
           <div>
-            <p className="font-semibold text-sm">{error}</p>
+            <p className="text-sm text-red-100">{error}</p>
+            <button
+              onClick={loadStats}
+              className="mt-2 text-xs text-red-300 hover:text-red-200 font-semibold"
+            >
+              Retry
+            </button>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Dashboard</h1>
-          <p className="text-accent-400">Real-time warehouse monitoring and control</p>
+      {/* System Health Card */}
+      <div className={`rounded-xl border p-8 ${healthBg} ${healthBorder}`}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-white">System Health</h2>
+          <div className={`text-4xl font-bold ${healthColor}`}>{health.score || 0}%</div>
         </div>
-        <div className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-accent-700/30 border border-accent-600">
-          <Activity className="w-5 h-5 text-green-400 animate-pulse" />
-          <span className="text-sm font-medium text-accent-200">Live Updates</span>
+        <p className={`text-sm ${healthColor} font-semibold mb-4`}>{health.status || 'UNKNOWN'}</p>
+        <p className="text-sm text-accent-300">Average Robot Battery: {health.avg_battery || 0}%</p>
+      </div>
+
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Total Tasks */}
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">Total Tasks</h3>
+            <Activity className="w-5 h-5 text-primary-400" />
+          </div>
+          <p className="text-3xl font-bold text-white">{tasks.total || 0}</p>
+          <p className="text-xs text-accent-500 mt-2">All tasks created</p>
+        </div>
+
+        {/* In Progress */}
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">In Progress</h3>
+            <Zap className="w-5 h-5 text-yellow-400" />
+          </div>
+          <p className="text-3xl font-bold text-yellow-300">{tasks.in_progress || 0}</p>
+          <p className="text-xs text-accent-500 mt-2">Currently running</p>
+        </div>
+
+        {/* Completed */}
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">Completed</h3>
+            <CheckCircle className="w-5 h-5 text-green-400" />
+          </div>
+          <p className="text-3xl font-bold text-green-300">{tasks.completed || 0}</p>
+          <p className="text-xs text-accent-500 mt-2">Successfully finished</p>
+        </div>
+
+        {/* Failed */}
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">Failed</h3>
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+          </div>
+          <p className="text-3xl font-bold text-red-300">{tasks.failed || 0}</p>
+          <p className="text-xs text-accent-500 mt-2">Errors encountered</p>
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Moving Products Card */}
-        <div className="group">
-          <div className="relative bg-gradient-card rounded-xl p-6 border border-accent-700 hover:border-primary-500 shadow-neo-md transition duration-300 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/10 to-transparent opacity-0 group-hover:opacity-100 transition duration-300"></div>
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 rounded-lg bg-primary-500/20 border border-primary-500/30">
-                  <Package className="w-6 h-6 text-primary-500" />
-                </div>
-                <span className="text-3xl font-bold text-white">{topMoving.length}</span>
+      {/* Robots Status */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">Total Robots</h3>
+            <Activity className="w-5 h-5 text-blue-400" />
+          </div>
+          <p className="text-3xl font-bold text-white">{robots.total || 0}</p>
+        </div>
+
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">Available</h3>
+            <CheckCircle className="w-5 h-5 text-green-400" />
+          </div>
+          <p className="text-3xl font-bold text-green-300">{robots.available || 0}</p>
+        </div>
+
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">Busy</h3>
+            <Zap className="w-5 h-5 text-yellow-400" />
+          </div>
+          <p className="text-3xl font-bold text-yellow-300">{robots.busy || 0}</p>
+        </div>
+
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-accent-400">Offline</h3>
+            <AlertCircle className="w-5 h-5 text-red-400" />
+          </div>
+          <p className="text-3xl font-bold text-red-300">{robots.offline || 0}</p>
+        </div>
+      </div>
+
+      {/* Task Performance */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <h3 className="text-lg font-bold text-white mb-4">Task Performance</h3>
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm text-accent-400">Success Rate</span>
+                <span className="text-sm font-bold text-green-300">{tasks.success_rate || 0}%</span>
               </div>
-              <p className="text-accent-300 text-sm">Top Moving Products</p>
-              <p className="text-xs text-accent-500 mt-1">Updated just now</p>
+              <div className="w-full bg-accent-800 rounded h-2">
+                <div
+                  className="bg-green-500 h-2 rounded transition-all duration-300"
+                  style={{ width: `${tasks.success_rate || 0}%` }}
+                />
+              </div>
+            </div>
+            <div className="pt-2 text-xs text-accent-500">
+              Avg Duration: {tasks.avg_duration_seconds || 0}s
             </div>
           </div>
         </div>
 
-        {/* Active Shelves Card */}
-        <div className="group">
-          <div className="relative bg-gradient-card rounded-xl p-6 border border-accent-700 hover:border-primary-500 shadow-neo-md transition duration-300 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/10 to-transparent opacity-0 group-hover:opacity-100 transition duration-300"></div>
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 rounded-lg bg-primary-500/20 border border-primary-500/30">
-                  <Grid className="w-6 h-6 text-primary-500" />
-                </div>
-                <span className="text-3xl font-bold text-white">{shelfSummary.length}</span>
-              </div>
-              <p className="text-accent-300 text-sm">Active Shelves</p>
-              <p className="text-xs text-accent-500 mt-1">All systems operational</p>
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <h3 className="text-lg font-bold text-white mb-4">Resources</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-accent-400">Total Shelves</span>
+              <span className="font-bold text-white">{resources.total_shelves || 0}</span>
             </div>
-          </div>
-        </div>
-
-        {/* Daily Movements Card */}
-        <div className="group">
-          <div className="relative bg-gradient-card rounded-xl p-6 border border-accent-700 hover:border-primary-500 shadow-neo-md transition duration-300 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/10 to-transparent opacity-0 group-hover:opacity-100 transition duration-300"></div>
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 rounded-lg bg-primary-500/20 border border-primary-500/30">
-                  <TrendingUp className="w-6 h-6 text-primary-500" />
-                </div>
-                <span className="text-3xl font-bold text-white">
-                  {dailyMovements.reduce((sum, m) => sum + m.qty, 0)}
-                </span>
-              </div>
-              <p className="text-accent-300 text-sm">Daily Movements</p>
-              <p className="text-xs text-accent-500 mt-1">24-hour activity</p>
+            <div className="flex justify-between text-sm">
+              <span className="text-accent-400">In Use</span>
+              <span className="font-bold text-yellow-300">{resources.shelves_in_use || 0}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-accent-400">Total Zones</span>
+              <span className="font-bold text-white">{resources.total_zones || 0}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Products */}
-        <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden">
-          <div className="p-6 border-b border-accent-700 bg-accent-800/50">
-            <h2 className="text-lg font-bold text-white flex items-center">
-              <TrendingUp className="w-5 h-5 mr-3 text-primary-500" />
-              Top Moving Products
-            </h2>
-          </div>
-          <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
-            {topMoving.slice(0, 5).map((item, idx) => (
-              <div
-                key={item._id ?? `top-${idx}`}
-                className="flex items-center justify-between p-3 rounded-lg bg-accent-800/30 hover:bg-accent-800/50 transition border border-accent-700/50"
-              >
-                <div className="flex items-center min-w-0">
-                  <div className="w-8 h-8 rounded-full bg-gradient-yellow flex items-center justify-center text-accent-900 font-bold text-sm mr-3 flex-shrink-0">
-                    {idx + 1}
+      {/* Robot Details */}
+      {robotStats?.robots && robotStats.robots.length > 0 && (
+        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
+          <h3 className="text-lg font-bold text-white mb-4">Robot Status</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {robotStats.robots.map((robot: any) => (
+              <div key={robot.id} className="bg-accent-800/50 rounded-lg p-4 border border-accent-700/50">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <p className="font-semibold text-white">{robot.name}</p>
+                    <p className="text-xs text-accent-500">{robot.robot_id}</p>
                   </div>
-                  <span className="font-medium text-accent-200 truncate">
-                    Product {item._id.slice(-6)}
+                  <span
+                    className={`text-xs px-2 py-1 rounded ${
+                      robot.status === 'IDLE'
+                        ? 'bg-green-500/20 text-green-300'
+                        : robot.status === 'BUSY'
+                          ? 'bg-yellow-500/20 text-yellow-300'
+                          : 'bg-red-500/20 text-red-300'
+                    }`}
+                  >
+                    {robot.status}
                   </span>
                 </div>
-                <span className="ml-4 px-3 py-1 rounded-full text-sm font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30 flex-shrink-0">
-                  {item.total} units
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Shelf Summary */}
-        <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden">
-          <div className="p-6 border-b border-accent-700 bg-accent-800/50">
-            <h2 className="text-lg font-bold text-white flex items-center">
-              <Grid className="w-5 h-5 mr-3 text-primary-500" />
-              Shelf Summary
-            </h2>
-          </div>
-          <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
-            {shelfSummary.slice(0, 5).map((shelf, idx) => (
-              <div
-                key={shelf.shelf_id ?? `shelf-${idx}`}
-                className="p-3 rounded-lg bg-accent-800/30 hover:bg-accent-800/50 transition border border-accent-700/50"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-accent-200">
-                      Shelf ({shelf.coords[0]}, {shelf.coords[1]})
-                    </p>
-                    <p className="text-xs text-accent-500 mt-1">Level {shelf.level}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-primary-300">{shelf.products} products</p>
-                    <p className="text-xs text-accent-500">{shelf.total_items} items</p>
-                  </div>
+                <div className="space-y-1 text-xs">
+                  {robot.battery_level !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-accent-400">Battery</span>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-12 bg-accent-700 rounded h-1.5">
+                          <div
+                            className={`h-1.5 rounded transition-all ${
+                              robot.battery_level > 50 ? 'bg-green-500' : 'bg-yellow-500'
+                            }`}
+                            style={{ width: `${robot.battery_level}%` }}
+                          />
+                        </div>
+                        <span className="text-white font-semibold w-8">{robot.battery_level}%</span>
+                      </div>
+                    </div>
+                  )}
+                  {robot.cpu_usage !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-accent-400">CPU</span>
+                      <span className="text-white">{Number(robot.cpu_usage).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {robot.ram_usage !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-accent-400">RAM</span>
+                      <span className="text-white">{Number(robot.ram_usage).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {robot.temperature !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-accent-400">Temp</span>
+                      <span className="text-white">{Number(robot.temperature).toFixed(1)}°C</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Today's Activity */}
-      <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden">
-        <div className="p-6 border-b border-accent-700 bg-accent-800/50">
-          <h2 className="text-lg font-bold text-white flex items-center">
-            <Activity className="w-5 h-5 mr-3 text-primary-500" />
-            Today's Activity
-          </h2>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {dailyMovements.map((movement, idx) => (
-              <div
-                key={movement._id ?? `mov-${idx}`}
-                className="p-4 rounded-lg bg-accent-800/30 border border-accent-700/50 hover:border-primary-500/50 transition"
-              >
-                <p className="text-xs text-accent-500 mb-2">{movement._id}</p>
-                <p className="text-2xl font-bold text-primary-400">{movement.qty}</p>
-                <p className="text-xs text-accent-500 mt-2">movements</p>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Refresh indicator */}
+      <div className="text-xs text-accent-500 text-center">
+        Last updated: {systemStats?.timestamp ? new Date(systemStats.timestamp).toLocaleTimeString() : '—'}
       </div>
     </div>
   );
