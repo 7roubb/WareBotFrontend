@@ -1,4 +1,5 @@
-const API_URL = '/api';
+// Prefer explicit environment variable `VITE_API_URL`. If not provided, fall back to proxy path '/api'.
+const API_URL = (import.meta.env && import.meta.env.VITE_API_URL) || '/api';
 const DEBUG_MODE = true; // Set to false in production
 
 let token: string | null = localStorage.getItem('token');
@@ -56,14 +57,18 @@ const handleResponse = async (res: Response, endpoint: string) => {
       message: errorMessage,
       body: responseBody,
     };
-    
+
+    // Log verbose debug info, but throw a safe Error object with details attached
     if (DEBUG_MODE) {
       console.error(`[API DEBUG] Failed to fetch ${endpoint}:`, fullError);
     } else {
       console.error(`Failed to fetch ${endpoint}:`, errorMessage);
     }
-    
-    throw new Error(errorMessage);
+
+    const err = new Error(errorMessage);
+    // Attach structured details so callers can present sanitized messages
+    (err as any).details = fullError;
+    throw err;
   }
   
   const contentType = res.headers.get('content-type');
@@ -72,6 +77,32 @@ const handleResponse = async (res: Response, endpoint: string) => {
   }
   
   return res.json();
+};
+
+// Sanitize documents returned from backend: convert Mongo `_id` to `id` string
+// and coerce known numeric fields to numbers for consistent frontend usage.
+const sanitizeDoc = (doc: any) => {
+  if (!doc || typeof doc !== 'object') return doc;
+  const out = { ...doc };
+  if (out._id) {
+    try {
+      out.id = String(out._id);
+    } catch (e) {
+      out.id = out._id;
+    }
+    delete out._id;
+  }
+
+  // Numeric fields we expect on tasks/shelves/zones
+  const numericKeys = ['x', 'y', 'yaw', 'target_x', 'target_y', 'target_yaw', 'pickup_x', 'pickup_y', 'pickup_yaw', 'drop_x', 'drop_y', 'drop_yaw', 'priority'];
+  for (const k of numericKeys) {
+    if (out[k] !== undefined && out[k] !== null) {
+      const n = Number(out[k]);
+      if (!Number.isNaN(n)) out[k] = n;
+    }
+  }
+
+  return out;
 };
 
 export const auth = {
@@ -120,7 +151,7 @@ export const health = {
       }
       return { status: 'error', code: res.status, text: res.statusText };
     } catch (error: any) {
-      return { status: 'error', message: error.message || 'Backend unreachable' };
+      return { status: 'error', message: error.message || 'Backend unreachable', apiUrl: API_URL };
     }
   },
 
@@ -268,11 +299,17 @@ export const products = {
 export const robots = {
   list: async () => {
     const res = await fetch(`${API_URL}/robots`);
-    return res.json();
+    const data = await res.json();
+    // Backend now returns { results: [...], pagination: {...} }
+    // For backward compatibility, handle both formats
+    return Array.isArray(data) ? data : (data.results || data);
   },
 
   get: async (id: string) => {
     const res = await fetch(`${API_URL}/robots/${id}`);
+    if (!res.ok) {
+      throw new Error(`Failed to get robot: ${res.statusText}`);
+    }
     return res.json();
   },
 
@@ -282,6 +319,10 @@ export const robots = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.message || 'Failed to create robot');
+    }
     return res.json();
   },
 
@@ -291,6 +332,10 @@ export const robots = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.message || 'Failed to update robot');
+    }
     return res.json();
   },
 
@@ -299,6 +344,10 @@ export const robots = {
       method: 'DELETE',
       headers: getHeaders(),
     });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.message || 'Failed to delete robot');
+    }
     return res.json();
   },
 };
@@ -348,19 +397,98 @@ export const shelves = {
   },
 };
 
-export const tasks = {
+export const zones = {
   list: async () => {
-    const res = await fetch(`${API_URL}/tasks`);
-    return res.json();
+    const res = await fetch(`${API_URL}/zones`);
+    return handleResponse(res, '/zones');
+  },
+
+  get: async (id: string) => {
+    const res = await fetch(`${API_URL}/zones/${id}`);
+    return handleResponse(res, `/zones/${id}`);
   },
 
   create: async (data: any) => {
+    const res = await fetch(`${API_URL}/zones`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res, '/zones (POST)');
+  },
+
+  delete: async (id: string) => {
+    const res = await fetch(`${API_URL}/zones/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res, `/zones/${id} (DELETE)`);
+  },
+};
+
+export const tasks = {
+  list: async () => {
+    const res = await fetch(`${API_URL}/tasks`);
+    const data = await handleResponse(res, '/tasks');
+    if (Array.isArray(data)) return data.map(sanitizeDoc);
+    if (data && Array.isArray(data.results)) return data.results.map(sanitizeDoc);
+    return sanitizeDoc(data);
+  },
+
+  assign: async (data: any) => {
     const res = await fetch(`${API_URL}/tasks/assign`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
+    const created = await handleResponse(res, '/tasks/assign');
+    return sanitizeDoc(created);
+  },
+
+  setReferencePoint: async (robotId: string, data: any) => {
+    const res = await fetch(`${API_URL}/tasks/${robotId}/reference-point`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to set reference point');
+    }
     return res.json();
+  },
+
+  start: async (robotId: string) => {
+    const res = await fetch(`${API_URL}/tasks/${robotId}/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to start task');
+    }
+    return res.json();
+  },
+
+  stop: async (robotId: string) => {
+    const res = await fetch(`${API_URL}/tasks/${robotId}/stop`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to stop task');
+    }
+    return res.json();
+  },
+
+  create: async (data: any) => {
+    // Reuse assign which performs error logging and throws on failure
+    return tasks.assign(data);
+  },
+  delete: async (id: string) => {
+    const res = await fetch(`${API_URL}/tasks/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res, `/tasks/${id} (DELETE)`);
   },
 };
 

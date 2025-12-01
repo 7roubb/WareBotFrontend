@@ -97,10 +97,15 @@ export default function Robots() {
     } catch (e) {}
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (robotId: string) => {
     if (confirm('Delete this robot?')) {
-      await robots.delete(id);
-      loadRobots();
+      try {
+        await robots.delete(robotId);
+        loadRobots();
+      } catch (error) {
+        console.error('Error deleting robot:', error);
+        alert('Failed to delete robot');
+      }
     }
   };
 

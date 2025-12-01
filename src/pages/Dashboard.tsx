@@ -166,7 +166,7 @@ export default function Dashboard() {
           <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
             {topMoving.slice(0, 5).map((item, idx) => (
               <div
-                key={item._id}
+                key={item._id ?? `top-${idx}`}
                 className="flex items-center justify-between p-3 rounded-lg bg-accent-800/30 hover:bg-accent-800/50 transition border border-accent-700/50"
               >
                 <div className="flex items-center min-w-0">
@@ -194,9 +194,9 @@ export default function Dashboard() {
             </h2>
           </div>
           <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
-            {shelfSummary.slice(0, 5).map((shelf) => (
+            {shelfSummary.slice(0, 5).map((shelf, idx) => (
               <div
-                key={shelf.shelf_id}
+                key={shelf.shelf_id ?? `shelf-${idx}`}
                 className="p-3 rounded-lg bg-accent-800/30 hover:bg-accent-800/50 transition border border-accent-700/50"
               >
                 <div className="flex items-center justify-between">
@@ -227,9 +227,9 @@ export default function Dashboard() {
         </div>
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {dailyMovements.map((movement) => (
+            {dailyMovements.map((movement, idx) => (
               <div
-                key={movement._id}
+                key={movement._id ?? `mov-${idx}`}
                 className="p-4 rounded-lg bg-accent-800/30 border border-accent-700/50 hover:border-primary-500/50 transition"
               >
                 <p className="text-xs text-accent-500 mb-2">{movement._id}</p>

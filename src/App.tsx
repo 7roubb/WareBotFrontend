@@ -6,6 +6,7 @@ import {
   Grid,
   ClipboardList,
   Map,
+  MapPin,
   LogOut,
 } from 'lucide-react';
 import { connectWebSocket, disconnectWebSocket } from './services/websocket';
@@ -19,8 +20,9 @@ import Robots from './pages/Robots';
 import Shelves from './pages/Shelves';
 import Tasks from './pages/Tasks';
 import MapPage from './pages/Map';
+import Zones from './pages/Zones';
 
-type Page = 'dashboard' | 'products' | 'robots' | 'shelves' | 'tasks' | 'map';
+type Page = 'dashboard' | 'products' | 'robots' | 'shelves' | 'tasks' | 'map' | 'zones';
 type AuthPage = 'login' | 'register';
 
 function App() {
@@ -68,6 +70,7 @@ function App() {
     { id: 'products' as Page, label: 'Products', icon: Package, color: 'purple' },
     { id: 'robots' as Page, label: 'Robots', icon: Bot, color: 'blue' },
     { id: 'shelves' as Page, label: 'Shelves', icon: Grid, color: 'green' },
+    { id: 'zones' as Page, label: 'Zones', icon: MapPin, color: 'teal' },
     { id: 'tasks' as Page, label: 'Tasks', icon: ClipboardList, color: 'orange' },
     { id: 'map' as Page, label: 'Map', icon: Map, color: 'cyan' },
   ];
@@ -131,6 +134,7 @@ function App() {
           {currentPage === 'products' && <Products />}
           {currentPage === 'robots' && <Robots />}
           {currentPage === 'shelves' && <Shelves />}
+          {currentPage === 'zones' && <Zones />}
           {currentPage === 'tasks' && <Tasks />}
           {currentPage === 'map' && <MapPage />}
         </div>
