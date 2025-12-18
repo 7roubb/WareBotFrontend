@@ -94,7 +94,7 @@ const sanitizeDoc = (doc: any) => {
   }
 
   // Numeric fields we expect on tasks/shelves/zones
-  const numericKeys = ['x', 'y', 'yaw', 'target_x', 'target_y', 'target_yaw', 'pickup_x', 'pickup_y', 'pickup_yaw', 'drop_x', 'drop_y', 'drop_yaw', 'priority'];
+  const numericKeys = ['x', 'y', 'yaw', 'target_x', 'target_y', 'target_yaw', 'pickup_x', 'pickup_y', 'pickup_yaw', 'drop_x', 'drop_y', 'drop_yaw', 'priority', 'x_coord', 'y_coord', 'storage_x', 'storage_y', 'storage_yaw'];
   for (const k of numericKeys) {
     if (out[k] !== undefined && out[k] !== null) {
       const n = Number(out[k]);
@@ -103,6 +103,28 @@ const sanitizeDoc = (doc: any) => {
   }
 
   return out;
+};
+
+// Helper: Sanitize an array of documents
+const sanitizeDocs = (docs: any[]): any[] => {
+  if (!Array.isArray(docs)) return docs;
+  return docs.map(sanitizeDoc);
+};
+
+// Helper: Extract user-friendly error message from API response
+const extractErrorMessage = (error: any): string => {
+  if (typeof error === 'string') return error;
+  if (error?.message) return error.message;
+  if (error?.details?.message) return error.details.message;
+  if (error?.details?.body) {
+    try {
+      const body = JSON.parse(error.details.body);
+      return body.message || body.error || 'API Error';
+    } catch (e) {
+      return 'API Error';
+    }
+  }
+  return 'An unexpected error occurred';
 };
 
 export const auth = {

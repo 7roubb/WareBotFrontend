@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
-import { ClipboardList, Plus, X } from 'lucide-react';
+import { ClipboardList, Plus, X, MapPin, Clock } from 'lucide-react';
 import { tasks, shelves, zones } from '../services/api';
-import { connectWebSocket } from '../services/websocket';
+import {
+  subscribeToTasksRoom,
+  onShelfLocationUpdate,
+  onTaskProgressUpdate,
+  unsubscribeFromAll,
+} from '../services/websocket';
 
 export default function Tasks() {
   const [taskList, setTaskList] = useState<any[]>([]);
   const [shelfList, setShelfList] = useState<any[]>([]);
   const [zoneList, setZoneList] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState<any | null>(null);
+  const [showTaskDetail, setShowTaskDetail] = useState(false);
 
   // Form data for new task
   const [formData, setFormData] = useState({
@@ -20,24 +27,66 @@ export default function Tasks() {
     target_zone_id: '',
   });
 
+  // Shelf location cache for real-time updates (used in setShelfLocations callback)
+
   useEffect(() => {
     loadTasks();
     loadShelves();
     loadZones();
 
-    const socket = connectWebSocket();
-    if (socket) {
-      socket.on('task_status', (data) => {
+    // Subscribe to tasks room for real-time task updates
+    const unsubscribeTasks = subscribeToTasksRoom((data: any) => {
+      console.log('Task update received:', data);
+      if (data.task_id && data.status) {
         setTaskList((prev) =>
           prev.map((t) =>
-            t.id === data.task_id ? { ...t, status: data.status } : t
+            t.id === data.task_id ? { ...t, ...data, status: data.status } : t
           )
         );
-      });
-    }
+      }
+    });
+
+    // Listen for shelf location updates
+    const unsubscribeShelfLocation = onShelfLocationUpdate((data: any) => {
+      console.log('Shelf location update received:', data);
+      const shelfId = data.shelf_id;
+      
+      // Update task list with new shelf location
+      setTaskList((prev) =>
+        prev.map((t) => {
+          if (t.shelf_id === shelfId) {
+            return {
+              ...t,
+              pickup_x: data.x_coord ?? t.pickup_x,
+              pickup_y: data.y_coord ?? t.pickup_y,
+              pickup_yaw: data.yaw ?? t.pickup_yaw,
+              location_status: data.location_status,
+            };
+          }
+          return t;
+        })
+      );
+    });
+
+    // Listen for task progress updates
+    const unsubscribeTaskProgress = onTaskProgressUpdate((data: any) => {
+      console.log('Task progress update received:', data);
+      if (data.task_id && data.status) {
+        setTaskList((prev) =>
+          prev.map((t) =>
+            t.id === data.task_id
+              ? { ...t, status: data.status, progress_percent: data.progress_percent }
+              : t
+          )
+        );
+      }
+    });
 
     return () => {
-      if (socket) socket.off('task_status');
+      unsubscribeTasks();
+      unsubscribeShelfLocation();
+      unsubscribeTaskProgress();
+      unsubscribeFromAll();
     };
   }, []);
 
@@ -144,7 +193,11 @@ export default function Tasks() {
         {taskList.map((task) => (
           <div
             key={task.id}
-            className="group bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden hover:border-primary-500 hover:shadow-neo transition duration-300"
+            onClick={() => {
+              setSelectedTaskDetail(task);
+              setShowTaskDetail(true);
+            }}
+            className="group bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden hover:border-primary-500 hover:shadow-neo transition duration-300 cursor-pointer"
           >
               <div className="bg-accent-800/50 p-6 border-b border-accent-700 flex items-start justify-between">
                 <div className="flex-1">
@@ -194,6 +247,19 @@ export default function Tasks() {
                   <p className="text-sm font-bold text-primary-300">{task.task_type || 'PICKUP_AND_DELIVER'}</p>
                 </div>
               </div>
+
+              {/* Location Status Badge */}
+              {task.location_status && (
+                <div className="p-3 rounded-lg bg-accent-800/50 border border-accent-700">
+                  <div className="flex items-center space-x-2">
+                    <MapPin className="w-4 h-4 text-accent-400" />
+                    <div>
+                      <div className="text-xs text-accent-400 mb-1">Shelf Location Status</div>
+                      <p className="text-sm font-bold text-primary-300">{task.location_status}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="p-3 rounded-lg bg-primary-500/10 border border-primary-500/20">
                 <div className="text-xs text-accent-400 mb-1">Assigned Robot</div>
@@ -397,6 +463,148 @@ export default function Tasks() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Task Detail Modal */}
+      {showTaskDetail && selectedTaskDetail && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-gradient-card rounded-xl shadow-neo max-w-2xl w-full border border-accent-700 max-h-[90vh] overflow-y-auto">
+            <div className="bg-accent-800/80 text-white p-6 flex items-center justify-between border-b border-accent-700 sticky top-0">
+              <div>
+                <h2 className="text-2xl font-bold">Task Details</h2>
+                <p className="text-xs text-accent-500 mt-1">ID: {selectedTaskDetail.id}</p>
+              </div>
+              <button
+                onClick={() => setShowTaskDetail(false)}
+                className="hover:bg-accent-700 p-2 rounded-lg transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Task Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-2">Status</div>
+                  <p className="text-lg font-bold text-primary-300">{selectedTaskDetail.status}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-2">Task Type</div>
+                  <p className="text-lg font-bold text-primary-300">{selectedTaskDetail.task_type}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-2">Priority</div>
+                  <p className="text-lg font-bold text-yellow-300">{selectedTaskDetail.priority}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-2">Assigned Robot</div>
+                  <p className="text-lg font-bold text-primary-300">{selectedTaskDetail.assigned_robot_name || '—'}</p>
+                </div>
+              </div>
+
+              {/* Location Status */}
+              {selectedTaskDetail.location_status && (
+                <div className="p-4 rounded-lg bg-accent-800/50 border border-accent-700">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <MapPin className="w-4 h-4 text-accent-400" />
+                    <span className="text-xs text-accent-400 font-semibold">Shelf Location Status</span>
+                  </div>
+                  <p className="text-sm font-bold text-primary-300">{selectedTaskDetail.location_status}</p>
+                </div>
+              )}
+
+              {/* Coordinates */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-2">Pickup Coordinates</div>
+                  <p className="text-sm font-mono text-accent-200">
+                    X: {Number(selectedTaskDetail.pickup_x ?? selectedTaskDetail.target_x ?? 0).toFixed(2)}
+                    <br />Y: {Number(selectedTaskDetail.pickup_y ?? selectedTaskDetail.target_y ?? 0).toFixed(2)}
+                    <br />Yaw: {Number(selectedTaskDetail.pickup_yaw ?? selectedTaskDetail.target_yaw ?? 0).toFixed(2)}°
+                  </p>
+                </div>
+
+                {selectedTaskDetail.drop_x !== undefined && (
+                  <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                    <div className="text-xs text-accent-400 mb-2">Drop Coordinates</div>
+                    <p className="text-sm font-mono text-accent-200">
+                      X: {Number(selectedTaskDetail.drop_x).toFixed(2)}
+                      <br />Y: {Number(selectedTaskDetail.drop_y).toFixed(2)}
+                      <br />Yaw: {Number(selectedTaskDetail.drop_yaw ?? 0).toFixed(2)}°
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Description */}
+              {selectedTaskDetail.description && (
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-2">Description</div>
+                  <p className="text-sm text-accent-200">{selectedTaskDetail.description}</p>
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedTaskDetail.created_at && (
+                  <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Clock className="w-4 h-4 text-accent-400" />
+                      <span className="text-xs text-accent-400">Created</span>
+                    </div>
+                    <p className="text-sm text-accent-200">
+                      {new Date(selectedTaskDetail.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+
+                {selectedTaskDetail.updated_at && (
+                  <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Clock className="w-4 h-4 text-accent-400" />
+                      <span className="text-xs text-accent-400">Last Updated</span>
+                    </div>
+                    <p className="text-sm text-accent-200">
+                      {new Date(selectedTaskDetail.updated_at).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* State History */}
+              {selectedTaskDetail.state_history && Array.isArray(selectedTaskDetail.state_history) && selectedTaskDetail.state_history.length > 0 && (
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <div className="text-xs text-accent-400 mb-3 font-semibold">State History</div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {selectedTaskDetail.state_history.map((state: any, idx: number) => (
+                      <div key={idx} className="text-xs text-accent-300 p-2 bg-accent-900/40 rounded border border-accent-700/50">
+                        <div className="font-mono">
+                          <span className="text-primary-300">{state.from_state || 'START'}</span>
+                          <span className="text-accent-500"> → </span>
+                          <span className="text-primary-300">{state.to_state}</span>
+                        </div>
+                        {state.timestamp && (
+                          <div className="text-accent-500 mt-1">
+                            {new Date(state.timestamp).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <button
+                onClick={() => setShowTaskDetail(false)}
+                className="w-full px-6 py-3 bg-accent-700 text-accent-200 rounded-lg font-semibold hover:bg-accent-600 transition"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

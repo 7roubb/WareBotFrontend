@@ -1,311 +1,418 @@
 import { useEffect, useState } from 'react';
-import { Activity, AlertCircle, CheckCircle, Zap, AlertTriangle, Battery } from 'lucide-react';
+import { Activity, Zap, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { dashboard } from '../services/api';
-import { connectWebSocket } from '../services/websocket';
+import {
+  subscribeToTasksRoom,
+  subscribeToRobotsRoom,
+  subscribeToSystemRoom,
+  unsubscribeFromAll,
+  connectWebSocket,
+} from '../services/websocket';
+
+interface TaskStats {
+  total_tasks: number;
+  assigned_tasks: number;
+  in_progress_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  completion_rate: number;
+  success_rate: number;
+}
+
+interface RobotStats {
+  total_robots: number;
+  available_robots: number;
+  busy_robots: number;
+  offline_robots: number;
+  average_battery_level: number;
+  average_temperature: number;
+}
+
+interface SystemHealth {
+  health_score: number;
+  status: 'HEALTHY' | 'WARNING' | 'CRITICAL';
+  average_battery_level: number;
+  active_tasks_count: number;
+  timestamp?: string;
+}
 
 export default function Dashboard() {
-  const [systemStats, setSystemStats] = useState<any>(null);
-  const [taskStats, setTaskStats] = useState<any>(null);
-  const [robotStats, setRobotStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [taskStats, setTaskStats] = useState<TaskStats>({
+    total_tasks: 0,
+    assigned_tasks: 0,
+    in_progress_tasks: 0,
+    completed_tasks: 0,
+    failed_tasks: 0,
+    completion_rate: 0,
+    success_rate: 0,
+  });
+
+  const [robotStats, setRobotStats] = useState<RobotStats>({
+    total_robots: 0,
+    available_robots: 0,
+    busy_robots: 0,
+    offline_robots: 0,
+    average_battery_level: 0,
+    average_temperature: 0,
+  });
+
+  const [systemHealth, setSystemHealth] = useState<SystemHealth>({
+    health_score: 0,
+    status: 'HEALTHY',
+    average_battery_level: 0,
+    active_tasks_count: 0,
+  });
+
+  const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadStats();
+    // Load initial data
+    const loadInitialData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [tasks, robots, system] = await Promise.all([
+          dashboard.liveTasks(),
+          dashboard.liveRobots(),
+          dashboard.liveSystem(),
+        ]);
 
-    // Refresh stats every 5 seconds
-    const interval = setInterval(loadStats, 5000);
+        if (tasks) setTaskStats(tasks);
+        if (robots) setRobotStats(robots);
+        if (system) setSystemHealth(system);
 
-    // Connect to WebSocket for real-time updates
-    const socket = connectWebSocket();
-    if (socket) {
-      socket.on('system_update', (data) => {
-        setSystemStats(data);
-      });
-      socket.on('task_update', (data) => {
-        setTaskStats((prev: any) => ({
-          ...prev,
-          ...data,
-        }));
-      });
-      socket.on('robot_update', (data) => {
-        setRobotStats((prev: any) => ({
-          ...prev,
-          ...data,
-        }));
-      });
-    }
-
-    return () => {
-      clearInterval(interval);
-      if (socket) {
-        socket.off('system_update');
-        socket.off('task_update');
-        socket.off('robot_update');
+        setLastUpdate(new Date().toLocaleTimeString());
+      } catch (err: any) {
+        console.error('Failed to load dashboard data:', err);
+        setError(err?.message || 'Failed to load dashboard data');
+      } finally {
+        setIsLoading(false);
       }
+    };
+
+    loadInitialData();
+
+    // Connect WebSocket and subscribe to rooms
+    const socket = connectWebSocket();
+
+    // Subscribe to tasks room for real-time task updates
+    const unsubscribeTasks = subscribeToTasksRoom((data: any) => {
+      console.log('Task update received:', data);
+      if (data.total_tasks !== undefined) {
+        setTaskStats(data);
+        setLastUpdate(new Date().toLocaleTimeString());
+      }
+    });
+
+    // Subscribe to robots room for real-time robot updates
+    const unsubscribeRobots = subscribeToRobotsRoom((data: any) => {
+      console.log('Robot update received:', data);
+      if (data.total_robots !== undefined) {
+        setRobotStats(data);
+        setLastUpdate(new Date().toLocaleTimeString());
+      }
+    });
+
+    // Subscribe to system room for real-time system health updates
+    const unsubscribeSystem = subscribeToSystemRoom((data: any) => {
+      console.log('System update received:', data);
+      if (data.health_score !== undefined) {
+        setSystemHealth(data);
+        setLastUpdate(new Date().toLocaleTimeString());
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      unsubscribeTasks();
+      unsubscribeRobots();
+      unsubscribeSystem();
+      unsubscribeFromAll();
     };
   }, []);
 
-  const loadStats = async () => {
-    try {
-      setError(null);
-      const [system, taskLive, robotLive] = await Promise.all([
-        dashboard.liveSystem(),
-        dashboard.taskStats(),
-        dashboard.liveRobots(),
-      ]);
-
-      setSystemStats(system);
-      setTaskStats(taskLive);
-      setRobotStats(robotLive);
-      setLoading(false);
-    } catch (err: any) {
-      console.error('Failed to load dashboard stats:', err);
-      setError(err?.message || 'Failed to load dashboard data');
-      setLoading(false);
+  const getHealthStatusColor = (status: string) => {
+    switch (status) {
+      case 'HEALTHY':
+        return 'bg-green-600/20 border-green-500/50 text-green-400';
+      case 'WARNING':
+        return 'bg-yellow-600/20 border-yellow-500/50 text-yellow-400';
+      case 'CRITICAL':
+        return 'bg-red-600/20 border-red-500/50 text-red-400';
+      default:
+        return 'bg-accent-700/30 border-accent-600/50 text-accent-300';
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-accent-400">Loading dashboard...</div>
+  const getHealthIcon = (status: string) => {
+    switch (status) {
+      case 'HEALTHY':
+        return <CheckCircle2 className="w-5 h-5" />;
+      case 'WARNING':
+        return <AlertCircle className="w-5 h-5" />;
+      case 'CRITICAL':
+        return <AlertCircle className="w-5 h-5" />;
+      default:
+        return <Activity className="w-5 h-5" />;
+    }
+  };
+
+  const StatCard = ({ title, value, icon: Icon, color = 'primary', label }: any) => (
+    <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden hover:border-primary-500/50 transition">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-accent-400">{title}</h3>
+          <div className="p-3 rounded-lg bg-primary-500/20 border border-primary-500/30">
+            <Icon className="w-5 h-5 text-primary-400" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <p className="text-3xl font-bold text-white">{value}</p>
+          {label && <p className="text-xs text-accent-500">{label}</p>}
+        </div>
       </div>
-    );
-  }
-
-  const health = systemStats?.health || {};
-  const tasks = systemStats?.tasks || taskStats || {};
-  const robots = systemStats?.robots || robotStats?.summary || {};
-  const resources = systemStats?.resources || {};
-
-  const healthColor = health.status === 'HEALTHY' ? 'text-green-400' : health.status === 'WARNING' ? 'text-yellow-400' : 'text-red-400';
-  const healthBg = health.status === 'HEALTHY' ? 'bg-green-500/10' : health.status === 'WARNING' ? 'bg-yellow-500/10' : 'bg-red-500/10';
-  const healthBorder = health.status === 'HEALTHY' ? 'border-green-500/30' : health.status === 'WARNING' ? 'border-yellow-500/30' : 'border-red-500/30';
+    </div>
+  );
 
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-4xl font-bold text-white mb-2">System Dashboard</h1>
-        <p className="text-accent-400">Real-time warehouse automation metrics</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-white mb-2">Dashboard</h1>
+          <p className="text-accent-400">Real-time warehouse operations monitoring</p>
+        </div>
+        <div className="text-right">
+          {isLoading && <p className="text-accent-400 text-sm animate-pulse">Loading...</p>}
+          {!isLoading && lastUpdate && (
+            <p className="text-accent-500 text-xs">Last update: {lastUpdate}</p>
+          )}
+        </div>
       </div>
 
-      {/* Error Banner */}
+      {/* Error Message */}
       {error && (
-        <div className="bg-red-900/40 border border-red-700 rounded-lg p-4 flex items-center space-x-3">
-          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-          <div>
-            <p className="text-sm text-red-100">{error}</p>
-            <button
-              onClick={loadStats}
-              className="mt-2 text-xs text-red-300 hover:text-red-200 font-semibold"
-            >
-              Retry
-            </button>
-          </div>
+        <div className="bg-red-600/20 border border-red-500/50 rounded-xl p-4 text-red-300 flex items-center space-x-3">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
       {/* System Health Card */}
-      <div className={`rounded-xl border p-8 ${healthBg} ${healthBorder}`}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-white">System Health</h2>
-          <div className={`text-4xl font-bold ${healthColor}`}>{health.score || 0}%</div>
-        </div>
-        <p className={`text-sm ${healthColor} font-semibold mb-4`}>{health.status || 'UNKNOWN'}</p>
-        <p className="text-sm text-accent-300">Average Robot Battery: {health.avg_battery || 0}%</p>
-      </div>
-
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Tasks */}
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">Total Tasks</h3>
-            <Activity className="w-5 h-5 text-primary-400" />
+      <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md overflow-hidden">
+        <div className="p-8">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-bold text-white">System Health</h2>
+            <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg border ${getHealthStatusColor(systemHealth.status)}`}>
+              {getHealthIcon(systemHealth.status)}
+              <span className="font-semibold text-sm">{systemHealth.status}</span>
+            </div>
           </div>
-          <p className="text-3xl font-bold text-white">{tasks.total || 0}</p>
-          <p className="text-xs text-accent-500 mt-2">All tasks created</p>
-        </div>
 
-        {/* In Progress */}
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">In Progress</h3>
-            <Zap className="w-5 h-5 text-yellow-400" />
-          </div>
-          <p className="text-3xl font-bold text-yellow-300">{tasks.in_progress || 0}</p>
-          <p className="text-xs text-accent-500 mt-2">Currently running</p>
-        </div>
-
-        {/* Completed */}
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">Completed</h3>
-            <CheckCircle className="w-5 h-5 text-green-400" />
-          </div>
-          <p className="text-3xl font-bold text-green-300">{tasks.completed || 0}</p>
-          <p className="text-xs text-accent-500 mt-2">Successfully finished</p>
-        </div>
-
-        {/* Failed */}
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">Failed</h3>
-            <AlertTriangle className="w-5 h-5 text-red-400" />
-          </div>
-          <p className="text-3xl font-bold text-red-300">{tasks.failed || 0}</p>
-          <p className="text-xs text-accent-500 mt-2">Errors encountered</p>
-        </div>
-      </div>
-
-      {/* Robots Status */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">Total Robots</h3>
-            <Activity className="w-5 h-5 text-blue-400" />
-          </div>
-          <p className="text-3xl font-bold text-white">{robots.total || 0}</p>
-        </div>
-
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">Available</h3>
-            <CheckCircle className="w-5 h-5 text-green-400" />
-          </div>
-          <p className="text-3xl font-bold text-green-300">{robots.available || 0}</p>
-        </div>
-
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">Busy</h3>
-            <Zap className="w-5 h-5 text-yellow-400" />
-          </div>
-          <p className="text-3xl font-bold text-yellow-300">{robots.busy || 0}</p>
-        </div>
-
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-accent-400">Offline</h3>
-            <AlertCircle className="w-5 h-5 text-red-400" />
-          </div>
-          <p className="text-3xl font-bold text-red-300">{robots.offline || 0}</p>
-        </div>
-      </div>
-
-      {/* Task Performance */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Task Performance</h3>
-          <div className="space-y-3">
+          <div className="space-y-6">
+            {/* Health Score Bar */}
             <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-sm text-accent-400">Success Rate</span>
-                <span className="text-sm font-bold text-green-300">{tasks.success_rate || 0}%</span>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-accent-400 font-medium">Health Score</span>
+                <span className="text-white font-bold text-lg">{systemHealth.health_score}%</span>
               </div>
-              <div className="w-full bg-accent-800 rounded h-2">
+              <div className="w-full bg-accent-800 rounded-full h-3 overflow-hidden border border-accent-700">
                 <div
-                  className="bg-green-500 h-2 rounded transition-all duration-300"
-                  style={{ width: `${tasks.success_rate || 0}%` }}
+                  className="h-full bg-gradient-to-r from-primary-500 to-primary-400 transition-all duration-500"
+                  style={{ width: `${Math.min(systemHealth.health_score, 100)}%` }}
                 />
               </div>
             </div>
-            <div className="pt-2 text-xs text-accent-500">
-              Avg Duration: {tasks.avg_duration_seconds || 0}s
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Resources</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-accent-400">Total Shelves</span>
-              <span className="font-bold text-white">{resources.total_shelves || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-accent-400">In Use</span>
-              <span className="font-bold text-yellow-300">{resources.shelves_in_use || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-accent-400">Total Zones</span>
-              <span className="font-bold text-white">{resources.total_zones || 0}</span>
+            {/* Health Metrics Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                <p className="text-xs text-accent-500 mb-1">Average Battery</p>
+                <p className="text-2xl font-bold text-primary-300">{(systemHealth.average_battery_level ?? 0).toFixed(1)}%</p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                <p className="text-xs text-accent-500 mb-1">Active Tasks</p>
+                <p className="text-2xl font-bold text-primary-300">{systemHealth.active_tasks_count}</p>
+              </div>
+
+              {systemHealth.timestamp && (
+                <div className="p-4 rounded-lg bg-accent-800/30 border border-accent-700">
+                  <p className="text-xs text-accent-500 mb-1">Last Check</p>
+                  <p className="text-sm font-mono text-accent-200">
+                    {new Date(systemHealth.timestamp).toLocaleTimeString()}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Robot Details */}
-      {robotStats?.robots && robotStats.robots.length > 0 && (
-        <div className="bg-gradient-card rounded-xl border border-accent-700 p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Robot Status</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {robotStats.robots.map((robot: any) => (
-              <div key={robot.id} className="bg-accent-800/50 rounded-lg p-4 border border-accent-700/50">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <p className="font-semibold text-white">{robot.name}</p>
-                    <p className="text-xs text-accent-500">{robot.robot_id}</p>
-                  </div>
-                  <span
-                    className={`text-xs px-2 py-1 rounded ${
-                      robot.status === 'IDLE'
-                        ? 'bg-green-500/20 text-green-300'
-                        : robot.status === 'BUSY'
-                          ? 'bg-yellow-500/20 text-yellow-300'
-                          : 'bg-red-500/20 text-red-300'
-                    }`}
-                  >
-                    {robot.status}
-                  </span>
-                </div>
-                <div className="space-y-1 text-xs">
-                  {robot.battery_level !== undefined && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-accent-400">Battery</span>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-12 bg-accent-700 rounded h-1.5">
-                          <div
-                            className={`h-1.5 rounded transition-all ${
-                              robot.battery_level > 50 ? 'bg-green-500' : 'bg-yellow-500'
-                            }`}
-                            style={{ width: `${robot.battery_level}%` }}
-                          />
-                        </div>
-                        <span className="text-white font-semibold w-8">{robot.battery_level}%</span>
-                      </div>
-                    </div>
-                  )}
-                  {robot.cpu_usage !== undefined && (
-                    <div className="flex justify-between">
-                      <span className="text-accent-400">CPU</span>
-                      <span className="text-white">{Number(robot.cpu_usage).toFixed(1)}%</span>
-                    </div>
-                  )}
-                  {robot.ram_usage !== undefined && (
-                    <div className="flex justify-between">
-                      <span className="text-accent-400">RAM</span>
-                      <span className="text-white">{Number(robot.ram_usage).toFixed(1)}%</span>
-                    </div>
-                  )}
-                  {robot.temperature !== undefined && (
-                    <div className="flex justify-between">
-                      <span className="text-accent-400">Temp</span>
-                      <span className="text-white">{Number(robot.temperature).toFixed(1)}°C</span>
-                    </div>
-                  )}
-                </div>
+      {/* Task Statistics */}
+      <div>
+        <h2 className="text-2xl font-bold text-white mb-4">Task Statistics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="Total Tasks"
+            value={taskStats.total_tasks}
+            icon={Activity}
+            label="All time tasks"
+          />
+          <StatCard
+            title="Assigned"
+            value={taskStats.assigned_tasks}
+            icon={CheckCircle2}
+            label="Currently assigned"
+          />
+          <StatCard
+            title="In Progress"
+            value={taskStats.in_progress_tasks}
+            icon={TrendingUp}
+            label="Being executed"
+          />
+          <StatCard
+            title="Completed"
+            value={taskStats.completed_tasks}
+            icon={CheckCircle2}
+            label="Successfully done"
+          />
+        </div>
+
+        {/* Task Performance Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md p-6">
+            <h3 className="text-sm font-semibold text-accent-400 mb-4">Completion Rate</h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-accent-300">Tasks Completed / Total</span>
+                <span className="text-2xl font-bold text-primary-300">
+                  {(taskStats.completion_rate ?? 0).toFixed(1)}%
+                </span>
               </div>
-            ))}
+              <div className="w-full bg-accent-800 rounded-full h-2 border border-accent-700">
+                <div
+                  className="h-full bg-gradient-to-r from-primary-500 to-primary-400"
+                  style={{ width: `${Math.min(taskStats.completion_rate, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md p-6">
+            <h3 className="text-sm font-semibold text-accent-400 mb-4">Success Rate</h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-accent-300">Successful Tasks %</span>
+                <span className="text-2xl font-bold text-green-400">
+                  {(taskStats.success_rate ?? 0).toFixed(1)}%
+                </span>
+              </div>
+              <div className="w-full bg-accent-800 rounded-full h-2 border border-accent-700">
+                <div
+                  className="h-full bg-gradient-to-r from-green-500 to-green-400"
+                  style={{ width: `${Math.min(taskStats.success_rate, 100)}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      )}
 
-      {/* Refresh indicator */}
-      <div className="text-xs text-accent-500 text-center">
-        Last updated: {systemStats?.timestamp ? new Date(systemStats.timestamp).toLocaleTimeString() : '—'}
+        {/* Failed Tasks Alert */}
+        {taskStats.failed_tasks > 0 && (
+          <div className="mt-4 bg-red-600/10 border border-red-500/30 rounded-xl p-4 flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+            <span className="text-red-300">
+              <strong>{taskStats.failed_tasks}</strong> task{taskStats.failed_tasks !== 1 ? 's' : ''} failed - check logs for details
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Robot Statistics */}
+      <div>
+        <h2 className="text-2xl font-bold text-white mb-4">Robot Statistics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="Total Robots"
+            value={robotStats.total_robots}
+            icon={Activity}
+            label="In warehouse"
+          />
+          <StatCard
+            title="Available"
+            value={robotStats.available_robots}
+            icon={CheckCircle2}
+            label="Ready for tasks"
+          />
+          <StatCard
+            title="Busy"
+            value={robotStats.busy_robots}
+            icon={TrendingUp}
+            label="Executing tasks"
+          />
+          <StatCard
+            title="Offline"
+            value={robotStats.offline_robots}
+            icon={AlertCircle}
+            label="Not connected"
+          />
+        </div>
+
+        {/* Robot Health Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-accent-400">Average Battery Level</h3>
+              <Zap className="w-5 h-5 text-yellow-400" />
+            </div>
+            <div className="space-y-3">
+              <p className="text-3xl font-bold text-primary-300">
+                {(robotStats.average_battery_level ?? 0).toFixed(1)}%
+              </p>
+              <div className="w-full bg-accent-800 rounded-full h-2 border border-accent-700">
+                <div
+                  className="h-full bg-gradient-to-r from-yellow-500 to-yellow-400"
+                  style={{ width: `${Math.min(robotStats.average_battery_level, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-card rounded-xl border border-accent-700 shadow-neo-md p-6">
+            <h3 className="text-sm font-semibold text-accent-400 mb-4">Average Temperature</h3>
+            <div className="space-y-3">
+              <p className="text-3xl font-bold text-primary-300">
+                {(robotStats.average_temperature ?? 0).toFixed(1)}°C
+              </p>
+              <p className="text-xs text-accent-500">
+                {robotStats.average_temperature > 70
+                  ? 'High temperature - check cooling'
+                  : robotStats.average_temperature > 50
+                    ? 'Moderate temperature'
+                    : 'Optimal temperature'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Offline Robots Alert */}
+        {robotStats.offline_robots > 0 && (
+          <div className="mt-4 bg-yellow-600/10 border border-yellow-500/30 rounded-xl p-4 flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+            <span className="text-yellow-300">
+              <strong>{robotStats.offline_robots}</strong> robot{robotStats.offline_robots !== 1 ? 's' : ''} offline - check power and connections
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Real-time Status Indicator */}
+      <div className="flex items-center space-x-2 text-xs text-accent-500">
+        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+        <span>Real-time monitoring active</span>
       </div>
     </div>
   );

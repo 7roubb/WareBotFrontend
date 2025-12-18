@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import { Navigation, Maximize2, Minimize2, ZoomIn, ZoomOut, Layers } from 'lucide-react';
+import { Navigation, Maximize2, Minimize2, ZoomIn, ZoomOut, Layers, RotateCw } from 'lucide-react';
 import { maps, robots, shelves } from '../services/api';
 import { connectWebSocket } from '../services/websocket';
 
@@ -33,6 +33,7 @@ export default function Map() {
   const [showShelves, setShowShelves] = useState(true);
   const [showRobots, setShowRobots] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -175,6 +176,27 @@ export default function Map() {
       console.error('Failed to load initial data:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Refresh shelf locations only
+  const loadShelves = async () => {
+    setIsRefreshing(true);
+    try {
+      const shelfRes = await shelves.list();
+      const normalizedShelves = (shelfRes || []).map((s: any) => ({
+        ...s,
+        x_coord: Number(s.x_coord ?? 0),
+        y_coord: Number(s.y_coord ?? 0),
+        id: s.id ?? `${Math.random().toString(36).slice(2, 8)}`,
+      }));
+      setShelfList(normalizedShelves);
+      setLastUpdate(new Date());
+      console.log('[MAP] Shelves refreshed:', normalizedShelves.length);
+    } catch (error) {
+      console.error('Failed to refresh shelves:', error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -537,6 +559,18 @@ export default function Map() {
                 <ZoomIn className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Refresh Shelves */}
+            <button
+              onClick={loadShelves}
+              disabled={isRefreshing}
+              className={`p-2 bg-accent-800 hover:bg-accent-700 text-accent-300 hover:text-white rounded-lg transition-all border border-accent-700 ${
+                isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title="Refresh shelf locations"
+            >
+              <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
 
             {/* Fullscreen */}
             <button
