@@ -8,9 +8,12 @@ import {
   Map,
   MapPin,
   LogOut,
+  AlertCircle,
 } from 'lucide-react';
 import { connectWebSocket, disconnectWebSocket } from './services/websocket';
 import { auth } from './services/api';
+import { realtimeIntegration } from './services/realtimeIntegration';
+import { errorHandler } from './utils/errorHandling';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -29,13 +32,34 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authPage, setAuthPage] = useState<AuthPage>('login');
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [systemError, setSystemError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       setIsAuthenticated(true);
       connectWebSocket();
+      
+      // Initialize real-time system
+      realtimeIntegration.initialize().catch((error) => {
+        console.warn('[App] Real-time system initialization failed:', error);
+        // App can still work without real-time features
+      });
     }
+  }, []);
+
+  // Subscribe to system errors
+  useEffect(() => {
+    const unsubscribe = errorHandler.subscribe((error) => {
+      // Show critical errors to user
+      if (error.type === 'CONNECTION_ERROR' || error.type === 'NETWORK_ERROR') {
+        setSystemError(error.message);
+        // Auto-hide after 5 seconds
+        setTimeout(() => setSystemError(null), 5000);
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   const handleLogin = () => {
@@ -77,6 +101,14 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-main flex">
+      {/* System Error Banner */}
+      {systemError && (
+        <div className="fixed top-0 left-0 right-0 bg-red-500 text-white p-4 flex items-center gap-3 z-50 animate-slideDown">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span>{systemError}</span>
+        </div>
+      )}
+
       <aside className="w-72 bg-gradient-to-b from-accent-800 via-accent-900 to-accent-900 text-white flex flex-col shadow-neo border-r border-accent-700">
         {/* Logo Section */}
         <div className="p-8 border-b border-accent-700">
