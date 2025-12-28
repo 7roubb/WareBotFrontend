@@ -1,0 +1,235 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ======================================================
+   BASE THEME — Neo MP-400 Industrial Yellow
+====================================================== */
+@layer base {
+  :root {
+    /* Dark industrial background */
+    --background: 222 47% 6%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 47% 9%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 40% 96%;
+
+    /* PRIMARY — Yellow-Orange Mix */
+    --primary: 38 100% 55%;
+    --primary-foreground: 222 47% 6%;
+
+    /* Secondary / panels */
+    --secondary: 220 30% 15%;
+    --secondary-foreground: 210 40% 90%;
+
+    --muted: 220 30% 14%;
+    --muted-foreground: 215 20% 55%;
+
+    /* Accent — Yellow-Orange Mix */
+    --accent: 35 100% 52%;
+    --accent-foreground: 222 47% 6%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142 76% 45%;
+    --success-foreground: 222 47% 6%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 6%;
+
+    --border: 220 30% 18%;
+    --input: 220 30% 12%;
+    --ring: 56 100% 50%;
+
+    --radius: 0.65rem;
+
+    /* Sidebar */
+    --sidebar-background: 222 47% 7%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 56 100% 50%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 220 30% 15%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 220 30% 15%;
+    --sidebar-ring: 56 100% 50%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(38, 100%, 58%),
+      hsl(35, 100%, 55%)
+    );
+
+    --gradient-card: linear-gradient(
+      145deg,
+      hsl(222 47% 11%),
+      hsl(222 47% 7%)
+    );
+
+    --gradient-glow: radial-gradient(
+      ellipse at center,
+      hsl(38 100% 55% / 0.18),
+      transparent 70%
+    );
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px -2px hsl(0 0% 0% / 0.35);
+    --shadow-md: 0 4px 18px -4px hsl(0 0% 0% / 0.45);
+    --shadow-lg: 0 8px 36px -8px hsl(0 0% 0% / 0.6);
+    --shadow-glow: 0 0 35px hsl(56 100% 50% / 0.25);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', sans-serif;
+    @apply font-semibold tracking-tight;
+  }
+}
+
+/* ======================================================
+   COMPONENTS — Compact Industrial Cards
+====================================================== */
+@layer components {
+  .glass-card {
+    @apply bg-card/85 backdrop-blur-xl border border-border/60 rounded-lg;
+    box-shadow: var(--shadow-md);
+    background-image: var(--gradient-card);
+  }
+
+  /* Compact card size */
+  .compact-card {
+    @apply p-4 w-full;
+    max-width: 240px;
+  }
+
+  .stat-card {
+    @apply glass-card compact-card transition-all duration-300;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+  }
+
+  /* Navigation */
+  .nav-link {
+    @apply flex items-center gap-3 px-4 py-2 rounded-md
+           text-muted-foreground transition-all duration-200;
+  }
+
+  .nav-link:hover {
+    @apply bg-secondary/60 text-foreground;
+  }
+
+  .nav-link.active {
+    @apply bg-primary/10 text-primary border-l-2 border-primary;
+  }
+
+  /* Buttons */
+  .btn-primary-glow {
+    @apply relative overflow-hidden;
+  }
+
+  .btn-primary-glow::after {
+    content: '';
+    @apply absolute inset-0 opacity-0 transition-opacity duration-300;
+    background: var(--gradient-primary);
+    filter: blur(22px);
+    z-index: -1;
+  }
+
+  .btn-primary-glow:hover::after {
+    @apply opacity-40;
+  }
+
+  /* Status badges */
+  .status-badge {
+    @apply inline-flex items-center gap-1.5
+           px-2.5 py-1 rounded-full
+           text-xs font-medium;
+  }
+
+  .status-pending {
+    @apply bg-warning/20 text-warning;
+  }
+
+  .status-active {
+    @apply bg-primary/20 text-primary;
+  }
+
+  .status-completed {
+    @apply bg-success/20 text-success;
+  }
+
+  .status-error {
+    @apply bg-destructive/20 text-destructive;
+  }
+
+  .status-offline {
+    @apply bg-muted text-muted-foreground;
+  }
+
+  /* Data grid — compact industrial layout */
+  .data-grid {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fill, minmax(220px, max-content));
+  }
+}
+
+/* ======================================================
+   UTILITIES — Industrial Animations
+====================================================== */
+@layer utilities {
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-primary);
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 18px hsl(56 100% 50% / 0.25);
+    }
+    50% {
+      box-shadow: 0 0 42px hsl(56 100% 50% / 0.45);
+    }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  .gradient-border {
+    @apply relative;
+    background:
+      linear-gradient(var(--background), var(--background)) padding-box,
+      var(--gradient-primary) border-box;
+    border: 1px solid transparent;
+  }
+}
