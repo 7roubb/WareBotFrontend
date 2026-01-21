@@ -416,3 +416,11 @@ export const requestMapData = () => {
   console.log('[WS] Requesting map data');
   emit('request_map_data');
 };
+
+/**
+ * Start simulation
+ */
+export const startSimulation = () => {
+  console.log('[WS] Starting simulation');
+  emit('start_simulation');
+};

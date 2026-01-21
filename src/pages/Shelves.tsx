@@ -1,10 +1,12 @@
-// Shelves.tsx - FIXED VERSION with proper endpoint usage and WebSocket
+// Shelves.tsx - COMPLETE with AUTO-POSITIONING + OBSTACLE DETECTION
 
 import { useEffect, useState } from 'react';
 import { Grid, Plus, Edit, Trash2, X, Package, AlertCircle, MapPin, Eye } from 'lucide-react';
 import type { Shelf, ShelfCreate, ShelfUpdate, Product } from '@/types';
 import { shelves } from '../services/api';
 import { connectWebSocket } from '../services/websocket';
+import { isSafeShelfPosition, getGridVisualization } from '../services/obstacle_detection';
+import type { OccupancyGrid } from '../services/obstacle_detection';
 
 interface FormData {
   warehouse_id: string;
@@ -19,6 +21,59 @@ interface FormData {
   storage_yaw: number | undefined;
 }
 
+// ============================================================================
+// AUTO-POSITIONING HELPERS
+// ============================================================================
+
+/**
+ * Calculate next safe position for a new shelf using grid layout
+ * Grid: (0,0), (1,0), (2,0), (0,1), (1,1), (2,1), ...
+ */
+const getNextSafePosition = (existingShelves: Shelf[]) => {
+  const GRID_SPACING = 1.0; // 1 meter between shelves
+  const GRID_COLS = 3; // 3 shelves per row
+
+  const shelfCount = existingShelves.length;
+
+  const x = (shelfCount % GRID_COLS) * GRID_SPACING;
+  const y = Math.floor(shelfCount / GRID_COLS) * GRID_SPACING;
+
+  console.log(
+    `[Auto Position] Next shelf will be at (${x}, ${y}) - Shelf #${shelfCount + 1}`
+  );
+
+  return { x, y };
+};
+
+/**
+ * Verify a position is safe (no collisions with other shelves)
+ */
+const isSafeFromOtherShelves = (
+  newX: number,
+  newY: number,
+  existingShelves: Shelf[],
+  radius: number = 0.5
+): boolean => {
+  for (const shelf of existingShelves) {
+    const dx = shelf.storage_x - newX;
+    const dy = shelf.storage_y - newY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance <= radius) {
+      console.warn(
+        `[Safety Check] Position (${newX}, ${newY}) conflicts with shelf at (${shelf.storage_x}, ${shelf.storage_y}). Distance: ${distance.toFixed(2)}m`
+      );
+      return false;
+    }
+  }
+  console.log(`[Safety Check] Position (${newX}, ${newY}) is safe from other shelves ✓`);
+  return true;
+};
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
 export default function Shelves() {
   const [shelfList, setShelfList] = useState<Shelf[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -29,6 +84,11 @@ export default function Shelves() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [useAutoPosition, setUseAutoPosition] = useState(true);
+
+  // ✨ NEW: Occupancy grid for obstacle detection
+  const [occupancyGrid, setOccupancyGrid] = useState<OccupancyGrid | null>(null);
+  const [gridUpdateTime, setGridUpdateTime] = useState<number>(0);
 
   const initialFormData: FormData = {
     warehouse_id: '',
@@ -47,6 +107,7 @@ export default function Shelves() {
 
   useEffect(() => {
     loadShelves();
+    loadOccupancyGrid(); // ← Load grid on mount
 
     const socket = connectWebSocket();
     if (socket) {
@@ -59,6 +120,16 @@ export default function Shelves() {
         setShelfList((prev) =>
           prev.map((s) => (s.id === data.id ? { ...s, ...data } : s))
         );
+      });
+
+      // ✨ NEW: Listen for map/grid updates
+      socket.on('map_update', (data: any) => {
+        console.log('[Shelves] WebSocket map_update received');
+        if (data.occupancy_grid) {
+          setOccupancyGrid(data.occupancy_grid);
+          setGridUpdateTime(Date.now());
+          console.log('[Shelves] Occupancy grid updated');
+        }
       });
 
       // Listen for shelf location updates specifically
@@ -102,11 +173,33 @@ export default function Shelves() {
     return () => {
       if (socket) {
         socket.off('shelf_update');
+        socket.off('map_update'); // ← Clean up
         socket.off('shelf_location_update');
         socket.off('shelf_deleted');
       }
     };
   }, [selectedShelf?.id]);
+
+  // ✨ NEW: Load occupancy grid
+  const loadOccupancyGrid = async () => {
+    try {
+      // This depends on your API - adjust endpoint accordingly
+      // The grid should come from your Map API or be sent via WebSocket
+      console.log('[Shelves] Attempting to load occupancy grid...');
+      
+      // For now, we'll rely on WebSocket updates
+      // If you have a direct endpoint, uncomment below:
+      // const response = await fetch('/api/map/occupancy-grid');
+      // if (response.ok) {
+      //   const grid = await response.json();
+      //   setOccupancyGrid(grid);
+      //   console.log('[Shelves] Occupancy grid loaded:', grid.name);
+      // }
+    } catch (err) {
+      console.error('[Shelves] Failed to load occupancy grid:', err);
+      // Continue without grid data - shelves can still be created
+    }
+  };
 
   const loadShelves = async () => {
     try {
@@ -261,10 +354,54 @@ export default function Shelves() {
         // ===== CREATING NEW SHELF =====
         console.log('[Shelves] Creating new shelf');
 
+        // ✨ AUTO-POSITIONING: Calculate position if enabled
+        let finalStorageX = formData.storage_x;
+        let finalStorageY = formData.storage_y;
+        let finalCurrentX = formData.current_x;
+        let finalCurrentY = formData.current_y;
+
+        if (useAutoPosition && !editingShelf) {
+          const nextPos = getNextSafePosition(shelfList);
+
+          if (isSafeFromOtherShelves(nextPos.x, nextPos.y, shelfList)) {
+            // ✨ NEW: Check for obstacles in occupancy grid
+            const obstacleCheck = isSafeShelfPosition(
+              nextPos.x,
+              nextPos.y,
+              occupancyGrid,
+              0.5 // Shelf radius
+            );
+
+            if (!obstacleCheck.safe) {
+              setError(`❌ Cannot place shelf: ${obstacleCheck.reason}`);
+              
+              // Show visualization if grid is available
+              if (occupancyGrid) {
+                const viz = getGridVisualization(nextPos.x, nextPos.y, occupancyGrid);
+                console.log(viz);
+              }
+              
+              return;
+            }
+
+            finalStorageX = nextPos.x;
+            finalStorageY = nextPos.y;
+            finalCurrentX = nextPos.x;
+            finalCurrentY = nextPos.y;
+            console.log(
+              `[Auto Position] Assigned position (${nextPos.x}, ${nextPos.y}) to new shelf`
+            );
+            console.log(`[Auto Position] ✓ Position is safe (no obstacles)`);
+          } else {
+            setError('Auto-calculated position is unsafe! Check warehouse layout.');
+            return;
+          }
+        }
+
         const submitData: ShelfCreate = {
           warehouse_id: formData.warehouse_id.trim(),
-          current_x: Number(formData.current_x),
-          current_y: Number(formData.current_y),
+          current_x: Number(finalCurrentX),
+          current_y: Number(finalCurrentY),
           current_yaw: Number(formData.current_yaw) || 0.0,
           level: Number(Math.floor(formData.level)),
           available: Boolean(formData.available),
@@ -272,12 +409,9 @@ export default function Shelves() {
         };
 
         // Only include storage if both provided
-        if (
-          formData.storage_x !== undefined &&
-          formData.storage_y !== undefined
-        ) {
-          submitData.storage_x = Number(formData.storage_x);
-          submitData.storage_y = Number(formData.storage_y);
+        if (finalStorageX !== undefined && finalStorageY !== undefined) {
+          submitData.storage_x = Number(finalStorageX);
+          submitData.storage_y = Number(finalStorageY);
           submitData.storage_yaw = formData.storage_yaw
             ? Number(formData.storage_yaw)
             : 0.0;
@@ -631,6 +765,54 @@ export default function Shelves() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {/* ✨ GRID STATUS INDICATOR */}
+              {!editingShelf && (
+                <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <div className="flex items-center space-x-2 text-xs">
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        occupancyGrid ? 'bg-green-500' : 'bg-yellow-500'
+                      }`}
+                    />
+                    <span className="text-muted-foreground">
+                      {occupancyGrid
+                        ? `📡 Grid available (${occupancyGrid.width}×${occupancyGrid.height} @ ${(occupancyGrid.resolution * 100).toFixed(1)}cm/cell)`
+                        : '⚠️ Waiting for occupancy grid...'}
+                    </span>
+                  </div>
+                  {occupancyGrid && gridUpdateTime && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Updated: {new Date(gridUpdateTime).toLocaleTimeString()}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* AUTO-POSITIONING TOGGLE - ONLY SHOW WHEN CREATING */}
+              {!editingShelf && (
+                <div className="p-3 rounded-lg bg-accent/10 border border-accent/20">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="useAutoPosition"
+                      checked={useAutoPosition}
+                      onChange={(e) => setUseAutoPosition(e.target.checked)}
+                      className="w-5 h-5 text-accent rounded focus:ring-2 focus:ring-accent/50"
+                    />
+                    <label htmlFor="useAutoPosition" className="text-sm font-medium text-foreground">
+                      📍 Auto-assign Position (Grid Layout)
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 ml-8">
+                    {useAutoPosition
+                      ? `Next position will be (${
+                          (shelfList.length % 3) * 1.0
+                        }, ${Math.floor(shelfList.length / 3) * 1.0})`
+                      : 'Manually set positions below'}
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Warehouse ID * <span className="text-xs text-muted-foreground">(1-100 chars)</span>
@@ -648,9 +830,10 @@ export default function Shelves() {
                 />
               </div>
 
+              {/* CURRENT POSITION - DISABLED IF AUTO-POSITIONING */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Current Position *
+                  Current Position * {useAutoPosition && !editingShelf && <span className="text-xs text-accent">(auto)</span>}
                 </label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -662,7 +845,8 @@ export default function Shelves() {
                       onChange={(e) =>
                         setFormData({ ...formData, current_x: Number(e.target.value) || 0 })
                       }
-                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition"
+                      disabled={useAutoPosition && !editingShelf}
+                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       required
                     />
                   </div>
@@ -676,7 +860,8 @@ export default function Shelves() {
                       onChange={(e) =>
                         setFormData({ ...formData, current_y: Number(e.target.value) || 0 })
                       }
-                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition"
+                      disabled={useAutoPosition && !editingShelf}
+                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       required
                     />
                   </div>
@@ -768,7 +953,8 @@ export default function Shelves() {
                           storage_x: e.target.value ? Number(e.target.value) : undefined,
                         })
                       }
-                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition"
+                      disabled={useAutoPosition && !editingShelf}
+                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="Optional"
                     />
                   </div>
@@ -785,7 +971,8 @@ export default function Shelves() {
                           storage_y: e.target.value ? Number(e.target.value) : undefined,
                         })
                       }
-                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition"
+                      disabled={useAutoPosition && !editingShelf}
+                      className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="Optional"
                     />
                   </div>
@@ -832,7 +1019,7 @@ export default function Shelves() {
         </div>
       )}
 
-      {/* Detail Modal - SAME AS BEFORE */}
+      {/* Detail Modal */}
       {showDetailModal && selectedShelf && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-card/80 backdrop-blur rounded-xl shadow-lg max-w-2xl w-full border border-border/30 max-h-[80vh] overflow-y-auto">

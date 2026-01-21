@@ -120,6 +120,14 @@ export interface Shelf {
   id: string;
   warehouse_id: string;
   level: number;
+  name?: string;
+  
+  // -------------------------
+  // DIMENSIONS (3D RENDERING)
+  // -------------------------
+  width?: number;
+  height?: number;
+  depth?: number;
   
   // -------------------------
   // CURRENT LOCATION (LIVE)
@@ -533,6 +541,13 @@ export interface Zone {
   y: number;
   yaw?: number;
   
+  // -------------------------
+  // DIMENSIONS (3D RENDERING)
+  // -------------------------
+  width?: number;
+  height?: number;
+  type?: string;
+  
   // Metadata
   deleted?: boolean;
   deleted_at?: string;
@@ -783,6 +798,7 @@ export interface MapData {
   height: number;
   resolution: number;
   origin: MapOrigin | [number, number, number?];
+  data?: number[];
   occupancy_grid?: number[][];
   robots: Robot[];
   shelves: Shelf[];
