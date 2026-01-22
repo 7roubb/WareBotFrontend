@@ -8,7 +8,7 @@ interface Robot3DProps {
   name?: string;
   x: number;
   y: number;
-  yaw?: number;
+  yaw?: number; // degrees from ROS
   status: string;
   batteryLevel?: number;
   showLabel?: boolean;
@@ -29,7 +29,7 @@ export function Robot3D({
 
   const { scene } = useGLTF('/robot-model.glb');
 
-  // Clone + material boost
+  // Clone model + improve materials
   const clonedScene = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((child) => {
@@ -46,9 +46,14 @@ export function Robot3D({
         }
       }
     });
+
+    // ⚠️ إذا الموديل facing غلط عدّل هذا السطر فقط
+    // clone.rotation.y = Math.PI / 2;
+
     return clone;
   }, [scene]);
 
+  // Glow animation
   useFrame((state) => {
     if (glowRef.current) {
       const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.1 + 0.9;
@@ -56,28 +61,45 @@ export function Robot3D({
     }
   });
 
+  // Status color
   const statusColor = useMemo(() => {
     switch (status) {
-      case 'IDLE': return '#94b6ee';
-      case 'BUSY': return '#22c55e';
-      case 'ERROR': return '#ef4444';
-      default: return '#3b82f6';
+      case 'IDLE':
+        return '#94b6ee';
+      case 'BUSY':
+        return '#22c55e';
+      case 'ERROR':
+        return '#ef4444';
+      default:
+        return '#3b82f6';
     }
   }, [status]);
 
-  const yawRad = (yaw * Math.PI) / 180;
+  /**
+   * YAW CONVERSION
+   * ROS:
+   *  - yaw = 0 → +X
+   *  - CCW positive
+   *
+   * Three.js:
+   *  - forward = -Z
+   *  - rotation around Y
+   */
+  const yawRad = yaw ;
+  const modelRotation = -yawRad + Math.PI / 2;
 
   return (
-    <group
-      ref={groupRef}
-      position={[x, 0, y]}
-      rotation={[0, -yawRad, 0]}
-    >
+    <group ref={groupRef} position={[x, 0, y]}>
       {/* Robot model */}
-      <primitive object={clonedScene} scale={[0.8, 0.8, 0.8]} />
+      <primitive
+        object={clonedScene}
+        scale={[0.8, 0.8, 0.8]}
+        rotation={[0, modelRotation, 0]}
+      />
 
       {/* Status ring */}
-      <mesh position={[0, 0.5, 0]}>
+      <mesh position={[0, 0.5, 0]}   rotation={[0, modelRotation, 0]}
+>
         <torusGeometry args={[0.25, 0.02, 8, 32]} />
         <meshStandardMaterial
           color={statusColor}
@@ -117,7 +139,8 @@ export function Robot3D({
             fontSize={0.1}
             color={statusColor}
           >
-            {status} {batteryLevel !== undefined ? `${batteryLevel}%` : ''}
+            {status}
+            {batteryLevel !== undefined ? ` • ${batteryLevel}%` : ''}
           </Text>
         </Billboard>
       )}

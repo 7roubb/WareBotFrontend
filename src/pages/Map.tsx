@@ -325,20 +325,18 @@ function Scene3D({
       {/* Zones */}
       {showZones &&
         mapData.zones?.map((zone) => (
-          <Zone3DCustom
+          <Zone3D
             key={zone.id}
             id={zone.id}
             name={zone.name}
-            worldX={zone.x}
-            worldY={zone.y}
+            x={zone.x}      // ← Direct coordinates
+            y={zone.y}      // ← Like robots
             width={zone.width}
             height={zone.height}
-            type={zone.type}
-            originX={originX}
-            originY={originY}
             showLabel={showLabels}
           />
         ))}
+
 
       {/* Shelves */}
       {showShelves &&
