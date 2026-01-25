@@ -12,6 +12,7 @@ interface Robot3DProps {
   status: string;
   batteryLevel?: number;
   showLabel?: boolean;
+  children?: React.ReactNode;
 }
 
 export function Robot3D({
@@ -23,9 +24,15 @@ export function Robot3D({
   status,
   batteryLevel,
   showLabel = true,
+  children,
 }: Robot3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const glowRef = useRef<THREE.Mesh>(null);
+  const initializedRef = useRef(false);
+
+  // Target values ref to avoid heavy re-renders or stale closures not needed if we use props directly in useFrame?
+  // Actually, props in useFrame are fine if we rely on the closure, but let's be safe.
+  // Ideally, we just use the props which update on re-render.
 
   const { scene } = useGLTF('/robot-model.glb');
 
@@ -46,18 +53,57 @@ export function Robot3D({
         }
       }
     });
-
-    // ⚠️ إذا الموديل facing غلط عدّل هذا السطر فقط
-    // clone.rotation.y = Math.PI / 2;
-
     return clone;
   }, [scene]);
 
-  // Glow animation
-  useFrame((state) => {
+  // YAW CONVERSION
+  // ROS: yaw = 0 -> +X (in ROS frame)
+  // Three: forward = -Z
+  // We need to map ROS yaw to Three Y rotation.
+  const targetRotation = -yaw + Math.PI / 2;
+
+  // Animation Loop for Smoothing and Glow
+  useFrame((state, delta) => {
+    // 1. Glow Animation
     if (glowRef.current) {
       const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.1 + 0.9;
       glowRef.current.scale.setScalar(pulse);
+    }
+
+    // 2. Smooth Movement & Rotation (Lerp)
+    if (groupRef.current) {
+      // Initialize position instantly on first frame to prevent flying in from 0,0,0
+      if (!initializedRef.current) {
+        groupRef.current.position.set(x, 0, y);
+        groupRef.current.rotation.set(0, targetRotation, 0);
+        initializedRef.current = true;
+        return;
+      }
+
+      const smoothingSpeed = 5; // Adjust this for faster/slower smoothing
+      const t = Math.min(1, delta * smoothingSpeed);
+
+      // Interpolate Position
+      groupRef.current.position.x = THREE.MathUtils.lerp(groupRef.current.position.x, x, t);
+      groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, y, t);
+      // Y position is constant 0
+
+      // Interpolate Rotation (handle wrap-around if needed, but simple lerp usually ok for small changes)
+      // For proper shortest-path rotation, quaternions are better, but basic lerp is likely sufficient for now.
+      // If the robot spins 360, simple lerp might look weird, but let's stick to simple lerp first.
+
+      // Shortest path angle lerp
+      let currentY = groupRef.current.rotation.y;
+      let targetY = targetRotation;
+
+      // Normalize to -PI to +PI to ensure shortest path
+      // (Optional optimization: if we really care about spin direction, we'd use Quaternions)
+      // A simple trick:
+      const diff = targetY - currentY;
+      if (diff > Math.PI) currentY += 2 * Math.PI;
+      else if (diff < -Math.PI) currentY -= 2 * Math.PI;
+
+      groupRef.current.rotation.y = THREE.MathUtils.lerp(currentY, targetRotation, t);
     }
   });
 
@@ -65,40 +111,30 @@ export function Robot3D({
   const statusColor = useMemo(() => {
     switch (status) {
       case 'IDLE':
-        return '#94b6ee';
+        return '#94b6ee'; // Keeping as cool blue for idle
       case 'BUSY':
-        return '#22c55e';
+        return '#ffa600'; // Primary/Yellow for active/busy
       case 'ERROR':
-        return '#ef4444';
+        return '#e02424'; // Destructive/Red
       default:
-        return '#3b82f6';
+        return '#ffa600'; // Primary
     }
   }, [status]);
 
-  /**
-   * YAW CONVERSION
-   * ROS:
-   *  - yaw = 0 → +X
-   *  - CCW positive
-   *
-   * Three.js:
-   *  - forward = -Z
-   *  - rotation around Y
-   */
-  const yawRad = yaw ;
-  const modelRotation = -yawRad + Math.PI / 2;
-
   return (
-    <group ref={groupRef} position={[x, 0, y]}>
+    // Note: Removed position={[x, 0, y]} from group because we control it manually in useFrame
+    <group ref={groupRef}>
       {/* Robot model */}
       <primitive
         object={clonedScene}
         scale={[0.8, 0.8, 0.8]}
-        rotation={[0, modelRotation, 0]}
+        rotation={[0, Math.PI / 2, 0]}
+
+      // Rotation controlled by group now
       />
 
       {/* Status ring */}
-      <mesh position={[0, 0.5, 0]}   rotation={[0, modelRotation, 0]}
+      <mesh position={[0, 0.5, 0]} rotation={[0, Math.PI / 2, 0]}
 >
         <torusGeometry args={[0.25, 0.02, 8, 32]} />
         <meshStandardMaterial
@@ -144,8 +180,12 @@ export function Robot3D({
           </Text>
         </Billboard>
       )}
+
+      {/* Attached Objects */}
+      {children}
     </group>
   );
 }
 
 useGLTF.preload('/robot-model.glb');
+ 

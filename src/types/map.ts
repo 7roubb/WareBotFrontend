@@ -26,7 +26,7 @@ export interface ShelfLocation {
 
 export interface ShelfMap {
   id: string;
-  warehouse_id: string;
+  name: string;
   storage: Coordinates;
   current: Coordinates;
   location_status: 'STORED' | 'IN_TRANSIT' | 'AT_DROP_ZONE' | 'DELIVERED_AT_DROP_ZONE' | 'RESTORED_TO_STORAGE';

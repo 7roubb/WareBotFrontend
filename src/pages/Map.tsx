@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState, useCallback } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { OrbitControls, PerspectiveCamera, Environment, Stats } from '@react-three/drei';
 import {
   Maximize2,
@@ -29,6 +30,7 @@ import { Shelf3D } from '../components/3d/Shelf3D';
 import { Zone3D } from '../components/3d/Zone3D';
 import { TaskLine3D } from '../components/3d/TaskLine3D';
 import { RVizGrid } from '../components/3d/RVizGrid';
+import { CoordinatePointer } from '../components/3d/CoordinatePointer';
 
 interface MapOriginObject {
   x: number;
@@ -64,10 +66,10 @@ interface ExtendedMapData {
 
 function LoadingSpinner() {
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50">
+    <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50">
       <div className="text-center">
         <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-accent-400">Loading 3D Scene...</p>
+        <p className="text-primary">Loading 3D Scene...</p>
       </div>
     </div>
   );
@@ -213,12 +215,12 @@ function TaskLine3DCustom({
   const { sceneX: endX, sceneZ: endZ } = worldToScene(dropX, dropY, originX, originY);
 
   const statusColor = {
-    PENDING: '#fbbf24',
-    ACTIVE: '#60a5fa',
-    COMPLETED: '#22c55e',
-    CANCELLED: '#ef4444',
-    ERROR: '#ef4444',
-  }[status] || '#fbbf24';
+    PENDING: '#f5a50f', // Warning
+    ACTIVE: '#ffa600', // Primary
+    COMPLETED: '#1bca56', // Success
+    CANCELLED: '#e02424', // Destructive
+    ERROR: '#e02424', // Destructive
+  }[status] || '#f5a50f';
 
   return (
     <group>
@@ -299,10 +301,16 @@ function Scene3D({
         shadow-camera-top={80}
         shadow-camera-bottom={-80}
       />
-      <pointLight position={[centerSceneX, 15, centerSceneZ]} intensity={0.5} color="#3b82f6" />
+      <pointLight position={[centerSceneX, 15, centerSceneZ]} intensity={0.5} color="#ffa600" />
 
       {/* Grid */}
-      {showGrid && <RVizGrid size={Math.max(mapWidth, mapHeight) * 1.2} divisions={20} />}
+      {showGrid && (
+        <RVizGrid
+          size={Math.max(mapWidth, mapHeight) * 1.5}
+          divisions={20}
+          gridCenter={[centerSceneX, 0, centerSceneZ]}
+        />
+      )}
 
       {/* Ground plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[centerSceneX, -0.01, centerSceneZ]} receiveShadow>
@@ -324,38 +332,50 @@ function Scene3D({
 
       {/* Zones */}
       {showZones &&
-        mapData.zones?.map((zone) => (
-          <Zone3D
-            key={zone.id}
-            id={zone.id}
-            name={zone.name}
-            x={zone.x}      // ← Direct coordinates
-            y={zone.y}      // ← Like robots
-            width={zone.width}
-            height={zone.height}
-            showLabel={showLabels}
-          />
-        ))}
+        mapData.zones?.map((zone) => {
+          const { sceneX, sceneZ } = worldToScene(zone.x, zone.y, originX, originY);
+          return (
+            <Zone3D
+              key={zone.id}
+              id={zone.id}
+              name={zone.name}
+              x={sceneX}
+              y={sceneZ}
+              width={zone.width}
+              height={zone.height}
+              showLabel={showLabels}
+            />
+          );
+        })}
 
 
-      {/* Shelves */}
+      {/* Shelves (Unattached) */}
       {showShelves &&
-        mapData.shelves?.map((shelf) => (
-          <Shelf3D
-            key={shelf.id}
-            id={shelf.id}
-            name={shelf.name}
-            x={shelf.current_x || shelf.x || 0}
-            y={shelf.current_y || shelf.y || 0}
-            yaw={shelf.current_yaw || shelf.yaw}
-            level={shelf.level}
-            available={shelf.available}
-            width={shelf.width}
-            height={shelf.height}
-            depth={shelf.depth}
-            showLabel={showLabels}
-          />
-        ))}
+        mapData.shelves?.map((shelf) => {
+          // Skip if attached to a robot (will be rendered with robot)
+          const isAttached = mapData.robots?.some(r => r.current_shelf_id === shelf.id);
+          if (isAttached) return null;
+
+          const x = shelf.current_x || shelf.x || 0;
+          const y = shelf.current_y || shelf.y || 0;
+          const { sceneX, sceneZ } = worldToScene(x, y, originX, originY);
+          return (
+            <Shelf3D
+              key={shelf.id}
+              id={shelf.id}
+              name={shelf.name}
+              x={sceneX}
+              y={sceneZ}
+              yaw={shelf.current_yaw || shelf.yaw}
+              level={shelf.level}
+              available={shelf.available}
+              width={shelf.width}
+              height={shelf.height}
+              depth={shelf.depth}
+              showLabel={showLabels}
+            />
+          );
+        })}
 
       {/* Tasks */}
       {showTasks &&
@@ -380,27 +400,112 @@ function Scene3D({
         mapData.robots?.map((robot) => {
           const x = robot.x !== undefined ? robot.x : robot.current_x;
           const y = robot.y !== undefined ? robot.y : robot.current_y;
-          if (!x || !y) return null;
+          if (x === undefined || y === undefined) return null;
+
+          const { sceneX, sceneZ } = worldToScene(x, y, originX, originY);
+
+          // Find attached shelf
+          let attachedShelf = null;
+          if (showShelves && robot.current_shelf_id) {
+            const shelf = mapData.shelves?.find(s => s.id === robot.current_shelf_id);
+            if (shelf) {
+              attachedShelf = (
+                <Shelf3D
+                  key={`attached-${shelf.id}`}
+                  id={shelf.id}
+                  name={shelf.name}
+                  x={0} // Relative to robot
+                  y={0} // Relative to robot
+                  yaw={0} // Relative to robot (aligned)
+                  level={shelf.level}
+                  available={shelf.available}
+                  width={shelf.width}
+                  height={shelf.height}
+                  depth={shelf.depth}
+                  showLabel={showLabels}
+                />
+              );
+            }
+          }
+
           return (
             <Robot3D
               key={robot.id}
               id={robot.id}
               name={robot.name || robot.robot_id}
-              x={x}
-              y={y}
+              x={sceneX}
+              y={sceneZ}
               yaw={robot.yaw ?? robot.current_yaw ?? 0}
               status={robot.status}
               batteryLevel={robot.battery_level}
               showLabel={showLabels}
-              
-            />
+            >
+              {attachedShelf}
+            </Robot3D>
           );
         })}
 
+      {/* Coordinate Pointer */}
+      <CoordinatePointer
+        originX={originX}
+        originY={originY}
+        mapWidth={mapWidth}
+        mapHeight={mapHeight}
+      />
+
       {/* Fog */}
-      <fog attach="fog" args={['#0f172a', Math.max(mapWidth, mapHeight) / 2, Math.max(mapWidth, mapHeight) * 3]} />
+      <fog attach="fog" args={['#080c17', Math.max(mapWidth, mapHeight) / 2, Math.max(mapWidth, mapHeight) * 3]} />
     </>
   );
+}
+
+// ============================================================================
+// MAP CONTROLLER (Auto-Fit Camera)
+// ============================================================================
+
+function MapController({ mapData }: { mapData: ExtendedMapData | null }) {
+  const { camera, controls } = useThree();
+
+  useEffect(() => {
+    if (!mapData || !controls) return;
+
+    // Calculate map dimensions
+    const resolution = mapData.resolution || 0.05;
+    const width = (mapData.width || 100) * resolution;
+    const height = (mapData.height || 80) * resolution;
+
+    // Calculate center
+    const centerX = height / 2;
+    const centerZ = -width / 2;
+
+    // Calculate distance to fit map
+    const maxDim = Math.max(width, height);
+    const fov = (camera as any).fov * (Math.PI / 180);
+    let cameraZ = Math.abs(maxDim / (2 * Math.tan(fov / 2)));
+
+    // Add minimal padding (1.05x) to fill screen more
+    cameraZ *= 0.01;
+
+    // Position camera
+    // We want a top-down angled view
+    const offset = cameraZ * 0.8;
+
+    camera.position.set(
+      centerX + offset,
+      cameraZ,
+      centerZ + offset
+    );
+
+    // Look at center
+    const orbitControls = controls as any;
+    if (orbitControls) {
+      orbitControls.target.set(centerX, 0, centerZ);
+      orbitControls.update();
+    }
+
+  }, [mapData, camera, controls]);
+
+  return null;
 }
 
 // ============================================================================
@@ -507,16 +612,17 @@ export default function WarehouseMap3D() {
             robots: prev.robots.map((r) =>
               r.id === robotId || r.robot_id === robotId
                 ? {
-                    ...r,
-                    x: Number(x),
-                    y: Number(y),
-                    yaw: Number(yaw),
-                    current_x: Number(x),
-                    current_y: Number(y),
-                    current_yaw: Number(yaw),
-                    status: data.status ?? r.status,
-                    battery_level: data.battery_level ?? r.battery_level,
-                  }
+                  ...r,
+                  x: Number(x),
+                  y: Number(y),
+                  yaw: Number(yaw),
+                  current_x: Number(x),
+                  current_y: Number(y),
+                  current_yaw: Number(yaw),
+                  status: data.status ?? r.status,
+                  battery_level: data.battery_level ?? r.battery_level,
+                  current_shelf_id: data.current_shelf_id ?? r.current_shelf_id,
+                }
                 : r,
             ),
           };
@@ -534,17 +640,18 @@ export default function WarehouseMap3D() {
           robots: prev.robots.map((r) =>
             r.id === data.robot_id || r.robot_id === data.robot_id || r.id === data.id
               ? {
-                  ...r,
-                  x: data.x !== undefined ? data.x : data.current_x !== undefined ? data.current_x : r.x,
-                  y: data.y !== undefined ? data.y : data.current_y !== undefined ? data.current_y : r.y,
-                  yaw: data.yaw !== undefined ? data.yaw : data.current_yaw !== undefined ? data.current_yaw : r.yaw,
-                  status: data.status ?? r.status,
-                  battery_level: data.battery_level ?? r.battery_level,
-                }
-                : r,
-            ),
-          };
-        });
+                ...r,
+                x: data.x !== undefined ? data.x : data.current_x !== undefined ? data.current_x : r.x,
+                y: data.y !== undefined ? data.y : data.current_y !== undefined ? data.current_y : r.y,
+                yaw: data.yaw !== undefined ? data.yaw : data.current_yaw !== undefined ? data.current_yaw : r.yaw,
+                status: data.status ?? r.status,
+                battery_level: data.battery_level ?? r.battery_level,
+                current_shelf_id: data.current_shelf_id ?? r.current_shelf_id,
+              }
+              : r,
+          ),
+        };
+      });
       setLastUpdate(new Date());
     });
 
@@ -557,17 +664,17 @@ export default function WarehouseMap3D() {
           shelves: prev.shelves.map((s) =>
             s.id === data.shelf_id
               ? {
-                  ...s,
-                  x: data.x !== undefined ? data.x : data.current_x !== undefined ? data.current_x : s.x,
-                  y: data.y !== undefined ? data.y : data.current_y !== undefined ? data.current_y : s.y,
-                  current_x: data.x !== undefined ? data.x : data.current_x !== undefined ? data.current_x : s.current_x,
-                  current_y: data.y !== undefined ? data.y : data.current_y !== undefined ? data.current_y : s.current_y,
-                  current_yaw: data.yaw !== undefined ? data.yaw : data.current_yaw !== undefined ? data.current_yaw : s.current_yaw,
-                }
-                : s,
-            ),
-          };
-        });
+                ...s,
+                x: data.x !== undefined ? data.x : data.current_x !== undefined ? data.current_x : s.x,
+                y: data.y !== undefined ? data.y : data.current_y !== undefined ? data.current_y : s.y,
+                current_x: data.x !== undefined ? data.x : data.current_x !== undefined ? data.current_x : s.current_x,
+                current_y: data.y !== undefined ? data.y : data.current_y !== undefined ? data.current_y : s.current_y,
+                current_yaw: data.yaw !== undefined ? data.yaw : data.current_yaw !== undefined ? data.current_yaw : s.current_yaw,
+              }
+              : s,
+          ),
+        };
+      });
       setLastUpdate(new Date());
     });
 
@@ -671,10 +778,10 @@ export default function WarehouseMap3D() {
             <p className="text-accent-400">Real-time robot and shelf location tracking</p>
           </div>
         </div>
-        <div className="bg-gradient-to-br from-accent-900 to-accent-950 rounded-xl shadow-2xl border border-accent-700 p-12 flex items-center justify-center h-96">
+        <div className="glass-card p-12 flex items-center justify-center h-96">
           <div className="text-center">
-            <div className="w-8 h-8 border-4 border-primary-400/30 border-t-primary-400 rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-accent-300 text-lg">Loading warehouse map...</p>
+            <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-muted-foreground text-lg">Loading warehouse map...</p>
           </div>
         </div>
       </div>
@@ -702,20 +809,20 @@ export default function WarehouseMap3D() {
   }
 
   return (
-    <div className={`flex flex-col h-screen ${isFullscreen ? 'fixed inset-0 z-50 bg-black' : ''}`}>
+    <div className={`flex flex-col h-screen bg-background ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''}`}>
       {/* Header */}
-      <header className="flex-shrink-0 bg-accent-900 border-b border-accent-700 px-6 py-4">
+      <header className="flex-shrink-0 bg-card/80 backdrop-blur-md border-b border-border px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Layers className="w-6 h-6 text-primary-400" />
+              <Layers className="w-6 h-6 text-primary" />
               <div>
-                <h1 className="text-lg font-bold text-white">Warehouse Map 3D</h1>
-                <p className="text-xs text-accent-400">Real-time visualization with MP 400 robots</p>
+                <h1 className="text-lg font-bold text-foreground">Warehouse Map 3D</h1>
+                <p className="text-xs text-muted-foreground">Real-time visualization with MP 400 robots</p>
               </div>
             </div>
-            <div className="h-6 w-px bg-accent-700" />
-            <div className="text-xs text-accent-400">
+            <div className="h-6 w-px bg-border" />
+            <div className="text-xs text-muted-foreground">
               Updated: {lastUpdate.toLocaleTimeString()}
             </div>
           </div>
@@ -724,9 +831,8 @@ export default function WarehouseMap3D() {
             <button
               onClick={refreshData}
               disabled={isRefreshing}
-              className={`flex items-center gap-1 px-3 py-2 rounded-lg bg-accent-800 hover:bg-accent-700 text-accent-300 hover:text-white transition-all border border-accent-700 ${
-                isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
+              className={`flex items-center gap-1 px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-all border border-border ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               title="Refresh data"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -734,7 +840,7 @@ export default function WarehouseMap3D() {
             </button>
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2 rounded-lg bg-accent-800 hover:bg-accent-700 text-accent-300 hover:text-white transition-all border border-accent-700"
+              className="p-2 rounded-lg bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-all border border-border"
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -745,37 +851,38 @@ export default function WarehouseMap3D() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-64 bg-accent-950 border-r border-accent-700 flex flex-col flex-shrink-0 overflow-y-auto">
+        <aside className="w-64 bg-card/50 backdrop-blur-sm border-r border-border flex flex-col flex-shrink-0 overflow-y-auto">
           {/* Stats */}
-          <div className="p-4 border-b border-accent-700">
-            <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-primary-400" />
+          <div className="p-4 border-b border-border">
+            <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-primary" />
               Statistics
             </h2>
             <div className="grid grid-cols-2 gap-2">
-              <div className="p-3 rounded-lg bg-accent-800 border border-primary-500/30">
-                <p className="text-2xl font-bold text-white">{activeRobots}</p>
-                <p className="text-xs text-accent-400">Active Robots</p>
+              <div className="p-3 rounded-lg bg-secondary/50 border border-primary/30">
+                <p className="text-2xl font-bold text-foreground">{activeRobots}</p>
+                <p className="text-xs text-muted-foreground">Active Robots</p>
               </div>
-              <div className="p-3 rounded-lg bg-accent-800 border border-green-500/30">
-                <p className="text-2xl font-bold text-white">{availableShelves}</p>
-                <p className="text-xs text-accent-400">Available</p>
+              <div className="p-3 rounded-lg bg-secondary/50 border border-success/30">
+                <p className="text-2xl font-bold text-foreground">{availableShelves}</p>
+                <p className="text-xs text-muted-foreground">Available</p>
               </div>
-              <div className="p-3 rounded-lg bg-accent-800 border border-red-500/30">
-                <p className="text-2xl font-bold text-white">{occupiedShelves}</p>
-                <p className="text-xs text-accent-400">Occupied</p>
+              <div className="p-3 rounded-lg bg-secondary/50 border border-destructive/30">
+                <p className="text-2xl font-bold text-foreground">{occupiedShelves}</p>
+                <p className="text-xs text-muted-foreground">Occupied</p>
               </div>
-              <div className="p-3 rounded-lg bg-accent-800 border border-yellow-500/30">
-                <p className="text-2xl font-bold text-white">{activeTasks}</p>
-                <p className="text-xs text-accent-400">Tasks</p>
+              <div className="p-3 rounded-lg bg-secondary/50 border border-warning/30">
+                <p className="text-2xl font-bold text-foreground">{activeTasks}</p>
+                <p className="text-xs text-muted-foreground">Tasks</p>
               </div>
             </div>
           </div>
 
           {/* Layer Controls */}
-          <div className="p-4 border-b border-accent-700">
-            <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-primary-400" />
+          {/* Layer Controls */}
+          <div className="p-4 border-b border-border">
+            <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-primary" />
               Layers
             </h2>
             <div className="space-y-2">
@@ -791,9 +898,8 @@ export default function WarehouseMap3D() {
                 <button
                   key={key}
                   onClick={() => setState(!state)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${
-                    state ? 'bg-primary-500/30 text-white' : 'bg-accent-800 text-accent-400 hover:text-white'
-                  }`}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${state ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-secondary/30 text-muted-foreground hover:text-foreground hover:bg-secondary/50 border border-transparent'
+                    }`}
                 >
                   <span className="text-sm">{label}</span>
                   {state ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -803,27 +909,28 @@ export default function WarehouseMap3D() {
           </div>
 
           {/* Legend */}
+          {/* Legend */}
           <div className="p-4 flex-1 overflow-auto">
-            <h2 className="text-sm font-semibold text-white mb-3">Legend</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-3">Legend</h2>
             <div className="space-y-2 text-xs">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                <span className="text-accent-300">MP 400 Robot</span>
+                <div className="w-3 h-3 rounded-full bg-primary" />
+                <span className="text-muted-foreground">MP 400 Robot</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-green-500" />
-                <span className="text-accent-300">Available Shelf</span>
+                <div className="w-3 h-3 rounded bg-success" />
+                <span className="text-muted-foreground">Available Shelf</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-red-500" />
-                <span className="text-accent-300">Occupied Shelf</span>
+                <div className="w-3 h-3 rounded bg-destructive" />
+                <span className="text-muted-foreground">Occupied Shelf</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-purple-500" />
-                <span className="text-accent-300">Zone</span>
+                <div className="w-3 h-3 rounded bg-secondary" />
+                <span className="text-muted-foreground">Zone</span>
               </div>
-              <div className="h-px bg-accent-700 my-2" />
-              <div className="text-xs text-accent-400 space-y-1">
+              <div className="h-px bg-border my-2" />
+              <div className="text-xs text-muted-foreground space-y-1">
                 <p>🟢 IDLE - Available</p>
                 <p>🟡 BUSY - In operation</p>
                 <p>🟠 CHARGING - At charger</p>
@@ -834,7 +941,7 @@ export default function WarehouseMap3D() {
         </aside>
 
         {/* 3D Canvas */}
-        <main className="flex-1 relative bg-black">
+        <main className="flex-1 relative bg-background">
           {isLoading && <LoadingSpinner />}
 
           <Canvas
@@ -867,13 +974,14 @@ export default function WarehouseMap3D() {
                 showTasks={showTasks}
                 showLabels={showLabels}
               />
+              <MapController mapData={mapData} />
             </Suspense>
 
             {showStats && <Stats />}
           </Canvas>
 
           {/* Controls overlay */}
-          <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur px-4 py-3 rounded-lg border border-accent-700 text-xs text-accent-300 space-y-1">
+          <div className="absolute bottom-4 left-4 bg-card/60 backdrop-blur px-4 py-3 rounded-lg border border-border text-xs text-muted-foreground space-y-1">
             <div>🖱️ Drag to rotate</div>
             <div>🔍 Scroll to zoom</div>
             <div>🖱️ Right-click to pan</div>
@@ -882,7 +990,7 @@ export default function WarehouseMap3D() {
           {/* Stats button */}
           <button
             onClick={() => setShowStats(!showStats)}
-            className="absolute top-4 right-4 px-3 py-2 rounded-lg bg-black/60 hover:bg-black/80 text-accent-300 hover:text-white transition-all border border-accent-700 text-xs font-medium"
+            className="absolute top-4 right-4 px-3 py-2 rounded-lg bg-card/60 hover:bg-card/80 text-muted-foreground hover:text-foreground transition-all border border-border text-xs font-medium"
           >
             {showStats ? 'Hide' : 'Show'} Stats
           </button>

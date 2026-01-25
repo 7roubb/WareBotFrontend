@@ -22,23 +22,23 @@ export interface Robot {
   available: boolean;
   status: RobotStatus;
   current_shelf_id?: string;
-  
+
   // Position data - stored in backend as current_*
   current_x?: number;
   current_y?: number;
   current_yaw?: number;
-  
+
   // Position data - alias for map visualization (x/y/yaw)
   x?: number;
   y?: number;
   yaw?: number;
-  
+
   // Telemetry data
   cpu_usage?: number;
   ram_usage?: number;
   battery_level?: number;
   temperature?: number;
-  
+
   // Metadata
   created_at?: string;
   updated_at?: string;
@@ -101,7 +101,7 @@ export type ShelfStatus = 'IDLE' | 'BUSY' | 'ERROR' | 'OFFLINE';
  * Shelf location status enum
  * Tracks where the shelf is in its lifecycle
  */
-export type ShelfLocationStatus = 
+export type ShelfLocationStatus =
   | 'STORED'                    // At storage/home position
   | 'IN_TRANSIT'                // Being moved by robot
   | 'AT_DROP_ZONE'              // Arrived at drop zone
@@ -118,17 +118,16 @@ export type ShelfLocationStatus =
  */
 export interface Shelf {
   id: string;
-  warehouse_id: string;
+  name: string;
   level: number;
-  name?: string;
-  
+
   // -------------------------
   // DIMENSIONS (3D RENDERING)
   // -------------------------
   width?: number;
   height?: number;
   depth?: number;
-  
+
   // -------------------------
   // CURRENT LOCATION (LIVE)
   // -------------------------
@@ -136,7 +135,7 @@ export interface Shelf {
   current_x?: number;
   current_y?: number;
   current_yaw?: number;
-  
+
   // -------------------------
   // ALIAS FOR COMPATIBILITY
   // -------------------------
@@ -144,7 +143,7 @@ export interface Shelf {
   x?: number;
   y?: number;
   yaw?: number;
-  
+
   // -------------------------
   // STORAGE LOCATION (IMMUTABLE)
   // -------------------------
@@ -154,30 +153,30 @@ export interface Shelf {
   storage_x: number;
   storage_y: number;
   storage_yaw?: number;
-  
+
   // -------------------------
   // LOCATION STATUS
   // -------------------------
   location_status?: ShelfLocationStatus;
   last_task_id?: string;
-  
+
   // -------------------------
   // STATE
   // -------------------------
   available: boolean;
   status: ShelfStatus;
-  
+
   // -------------------------
   // APRILTAG
   // -------------------------
   april_tag_url?: string;
   april_tag_id?: number;
-  
+
   // -------------------------
   // RELATIONSHIPS
   // -------------------------
   products?: Product[];
-  
+
   // -------------------------
   // METADATA
   // -------------------------
@@ -191,20 +190,20 @@ export interface Shelf {
  * Matches ShelfCreate Pydantic model
  */
 export interface ShelfCreate {
-  warehouse_id: string;
-  
+  name: string;
+
   // Current location (required)
   current_x: number;
   current_y: number;
   current_yaw?: number;
-  
+
   level: number;
-  
+
   // Storage location (optional - backend copies from current if not provided)
   storage_x?: number;
   storage_y?: number;
   storage_yaw?: number;
-  
+
   available?: boolean;
   status?: ShelfStatus;
   april_tag_url?: string;
@@ -215,20 +214,20 @@ export interface ShelfCreate {
  * Matches ShelfUpdate Pydantic model
  */
 export interface ShelfUpdate {
-  warehouse_id?: string;
-  
+  name?: string;
+
   // Current location (live position updates)
   current_x?: number;
   current_y?: number;
   current_yaw?: number;
-  
+
   level?: number;
-  
+
   // Storage location (RARE - admin only)
   storage_x?: number;
   storage_y?: number;
   storage_yaw?: number;
-  
+
   available?: boolean;
   status?: ShelfStatus;
   location_status?: 'AT_STORAGE' | 'AT_ZONE' | 'IN_TRANSIT';
@@ -296,7 +295,7 @@ export interface Product {
   name: string;
   sku: string;
   quantity: number;
-  
+
   // Optional fields
   category?: string;
   brand?: string;
@@ -308,15 +307,15 @@ export interface Product {
     height?: number;
   };
   barcode?: string;
-  
+
   // Images
   main_image_url?: string;
   image_urls?: string[];
-  
+
   // Relationships
   shelf_id?: string;
   description?: string;
-  
+
   // Metadata
   created_at?: string;
   updated_at?: string;
@@ -330,7 +329,7 @@ export interface ProductCreate {
   name: string;
   sku: string;
   quantity: number;
-  
+
   category?: string;
   brand?: string;
   price?: number;
@@ -341,7 +340,7 @@ export interface ProductCreate {
     height?: number;
   };
   barcode?: string;
-  
+
   main_image_url?: string;
   image_urls?: string[];
   shelf_id?: string;
@@ -356,7 +355,7 @@ export interface ProductUpdate {
   name?: string;
   sku?: string;
   quantity?: number;
-  
+
   category?: string;
   brand?: string;
   price?: number;
@@ -367,7 +366,7 @@ export interface ProductUpdate {
     height?: number;
   };
   barcode?: string;
-  
+
   main_image_url?: string;
   image_urls?: string[];
   shelf_id?: string;
@@ -382,7 +381,7 @@ export interface ProductUpdate {
  * Task type enum
  * Matches TaskCreate Pydantic model task_type field
  */
-export type TaskType = 
+export type TaskType =
   | 'PICKUP_AND_DELIVER'  // Pick shelf from current location, deliver to zone
   | 'MOVE_SHELF'          // Move shelf to a new target location
   | 'RETURN_SHELF'        // Return shelf from zone back to storage
@@ -393,7 +392,7 @@ export type TaskType =
  * Matches TaskStatusEnum in Pydantic models
  * Complete state machine for task lifecycle
  */
-export type TaskStatus = 
+export type TaskStatus =
   | 'PENDING'               // Task created, waiting for robot assignment
   | 'ASSIGNED'              // Robot assigned to task
   | 'MOVING_TO_PICKUP'      // Robot moving to shelf pickup location
@@ -411,7 +410,7 @@ export type TaskStatus =
  * Task completion action enum
  * Indicates what happened when task completed
  */
-export type TaskCompletionAction = 
+export type TaskCompletionAction =
   | 'RESTORED_TO_STORAGE'     // Shelf returned to storage location
   | 'DELIVERED_TO_DROP_ZONE'  // Shelf delivered to drop zone
   | 'MOVED_TO_TARGET'         // Shelf moved to target location
@@ -428,16 +427,16 @@ export interface Task {
   assigned_robot_name?: string;
   robot_id?: string;
   priority: number;
-  
+
   status: TaskStatus;
   task_type: TaskType;
-  
+
   description?: string;
   zone_id?: string;
   drop_zone_id?: string;
   target_shelf_id?: string;
   target_zone_id?: string;
-  
+
   // -------------------------
   // PICKUP LOCATION
   // -------------------------
@@ -445,7 +444,7 @@ export interface Task {
   pickup_x?: number;
   pickup_y?: number;
   pickup_yaw?: number;
-  
+
   // -------------------------
   // DROP LOCATION
   // -------------------------
@@ -453,7 +452,7 @@ export interface Task {
   drop_x?: number;
   drop_y?: number;
   drop_yaw?: number;
-  
+
   // -------------------------
   // LEGACY TARGET COORDS
   // -------------------------
@@ -461,7 +460,7 @@ export interface Task {
   target_x?: number;
   target_y?: number;
   target_yaw?: number;
-  
+
   // -------------------------
   // ORIGIN SNAPSHOTS
   // -------------------------
@@ -472,7 +471,7 @@ export interface Task {
   origin_pickup_x?: number;
   origin_pickup_y?: number;
   origin_pickup_yaw?: number;
-  
+
   // -------------------------
   // CURRENT ROBOT POSITION
   // -------------------------
@@ -480,19 +479,19 @@ export interface Task {
   current_robot_x?: number;
   current_robot_y?: number;
   current_yaw?: number;
-  
+
   // -------------------------
   // COMPLETION METADATA
   // -------------------------
   completion_action?: TaskCompletionAction;
   duration_seconds?: number;
-  
+
   // -------------------------
   // PROGRESS
   // -------------------------
   progress?: number;
   error_message?: string;
-  
+
   // -------------------------
   // TIMESTAMPS
   // -------------------------
@@ -515,7 +514,7 @@ export interface TaskCreate {
   task_type?: TaskType;
   target_shelf_id?: string;
   target_zone_id?: string;
-  
+
   // Origin snapshots (populated by backend at creation time)
   origin_storage_x?: number;
   origin_storage_y?: number;
@@ -540,14 +539,14 @@ export interface Zone {
   x: number;
   y: number;
   yaw?: number;
-  
+
   // -------------------------
   // DIMENSIONS (3D RENDERING)
   // -------------------------
   width?: number;
   height?: number;
   type?: string;
-  
+
   // Metadata
   deleted?: boolean;
   deleted_at?: string;
@@ -614,7 +613,7 @@ export interface ProductTransaction {
   quantity: number;
   action: TransactionAction;
   description?: string;
-  
+
   created_at?: string;
   updated_at?: string;
 }
@@ -1045,7 +1044,7 @@ export function isShelf(obj: any): obj is Shelf {
     typeof obj === 'object' &&
     obj !== null &&
     typeof obj.id === 'string' &&
-    typeof obj.warehouse_id === 'string' &&
+    typeof obj.name === 'string' &&
     typeof obj.storage_x === 'number' &&
     typeof obj.storage_y === 'number'
   );
@@ -1104,5 +1103,5 @@ export type NonUndefined<T> = T extends undefined ? never : T;
 /**
  * Extract array element type
  */
-export type ArrayElement<ArrayType extends readonly unknown[]> = 
+export type ArrayElement<ArrayType extends readonly unknown[]> =
   ArrayType extends readonly (infer ElementType)[] ? ElementType : never;

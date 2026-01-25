@@ -19,7 +19,7 @@ export default function Dashboard() {
   }
 
   const recentTasks = tasksList?.slice(0, 5) || [];
-  const activeRobots = robotsList?.filter((r) => r.status !== 'offline').slice(0, 5) || [];
+  const activeRobots = robotsList?.filter((r) => r.status !== 'OFFLINE').slice(0, 5) || [];
 
   return (
     <div className="space-y-6 animate-fade-in">

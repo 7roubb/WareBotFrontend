@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit, Trash2, X, AlertCircle, CheckCircle, Clock, Zap, MapPin } from 'lucide-react';
+import { Plus, Edit, Trash2, X, AlertCircle, CheckCircle, Clock, Zap, MapPin, ListTodo, Box } from 'lucide-react';
 import type { Task, TaskCreate, TaskStatus, Shelf, Zone } from '@/types';
 import { tasks } from '../services/api';
 import { shelves } from '../services/api';
@@ -319,8 +319,8 @@ export default function Tasks() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Tasks</h1>
-          <p className="text-accent">Manage robot task assignments and monitor progress</p>
+          <h1 className="text-4xl font-bold font-display text-white mb-2">Task Operations</h1>
+          <p className="text-muted-foreground font-mono text-sm">Mission Control • {taskList.length} active task{taskList.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => openModal()}
@@ -358,17 +358,20 @@ export default function Tasks() {
       )}
 
       {/* Tasks List */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         {loading && taskList.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin">
-              <Zap className="w-8 h-8 text-primary" />
+          <div className="text-center py-20">
+            <div className="inline-block relative">
+              <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse"></div>
+              <Zap className="w-12 h-12 text-primary relative z-10 animate-spin-slow" />
             </div>
-            <p className="text-muted-foreground mt-3">Loading tasks...</p>
+            <p className="text-muted-foreground mt-6 font-mono tracking-wider">INITIALIZING MISSION DATA...</p>
           </div>
         ) : taskList.length === 0 ? (
-          <div className="text-center py-12 bg-card/50 rounded-lg border border-border/30">
-            <p className="text-muted-foreground text-lg">No tasks yet</p>
+          <div className="text-center py-16 bg-card/40 backdrop-blur-md rounded-xl border border-border/40 border-dashed">
+            <ListTodo className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-muted-foreground text-lg">No active missions</p>
+            <p className="text-xs text-muted-foreground/50 font-mono mt-1">System ready for new assignments</p>
           </div>
         ) : (
           taskList.map((task) => {
@@ -378,58 +381,92 @@ export default function Tasks() {
             return (
               <div
                 key={task.id}
-                className="p-4 rounded-lg bg-card/80 border border-border/30 hover:border-primary/30 transition"
+                className="group bg-card/40 backdrop-blur-md rounded-xl border border-border/40 hover:border-primary/40 shadow-lg hover:shadow-2xl transition-all duration-300"
               >
-                <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start justify-between p-5 border-b border-border/20 bg-gradient-to-r from-card/50 to-transparent">
                   <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <h3 className="text-lg font-bold text-foreground">
-                        {TASK_TYPES.find((t) => t.value === task.task_type)?.label || task.task_type}
-                      </h3>
-                      <span
-                        className={`flex items-center space-x-1 px-2 py-1 rounded text-sm font-semibold ${getStatusColor(task.status)}`}
-                      >
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 rounded-lg bg-accent/10 border border-accent/20">
                         {getStatusIcon(task.status)}
-                        <span>{task.status}</span>
-                      </span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-foreground font-display tracking-tight flex items-center gap-2">
+                          {TASK_TYPES.find((t) => t.value === task.task_type)?.label || task.task_type}
+                        </h3>
+                        <span className="text-xs text-muted-foreground font-mono">ID: {task.id.split('-')[0].toUpperCase()}</span>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Shelf: {shelf?.warehouse_id} (Level {shelf?.level}) {zone && `→ Zone: ${zone.name}`}
-                    </p>
-                    {task.description && (
-                      <p className="text-sm text-muted-foreground mt-1">{task.description}</p>
-                    )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm font-bold text-primary mb-2">Priority: {task.priority}/10</div>
-                    <div className="flex space-x-1">
-                      <button
-                        onClick={() => handleDeleteTask(task.id)}
-                        disabled={loading}
-                        className="px-2 py-1 rounded text-xs bg-destructive/20 text-destructive hover:bg-destructive/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                  <div className="text-right flex flex-col items-end gap-2">
+                    <span
+                      className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm ${getStatusColor(task.status)}`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
+                      <span>{task.status.replace(/_/g, ' ')}</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">PRIORITY</span>
+                      <div className="flex gap-0.5">
+                        {[...Array(10)].map((_, i) => (
+                          <div key={i} className={`w-1 h-3 rounded-sm ${i < task.priority ? 'bg-primary' : 'bg-muted/30'}`} />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Status Transitions */}
-                <div className="flex flex-wrap gap-2 pt-3 border-t border-border/30">
-                  {TASK_STATUSES.map((status) => (
+                <div className="p-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="p-3 rounded-lg bg-background/40 border border-border/30 flex items-center gap-3">
+                      <Box className="w-5 h-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Target Shelf</p>
+                        <p className="text-sm font-mono font-medium text-foreground">{shelf?.name || 'Unknown'} <span className="text-muted-foreground opacity-60">| Level {shelf?.level ?? '-'}</span></p>
+                      </div>
+                    </div>
+                    {zone && (
+                      <div className="p-3 rounded-lg bg-background/40 border border-border/30 flex items-center gap-3">
+                        <MapPin className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Drop Zone</p>
+                          <p className="text-sm font-mono font-medium text-foreground">{zone.name}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {task.description && (
+                    <div className="mb-4 p-3 rounded-lg bg-secondary/20 border border-border/20 text-sm italic text-muted-foreground">
+                      "{task.description}"
+                    </div>
+                  )}
+
+                  {/* Status Transitions */}
+                  <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-border/20">
+                    <span className="text-xs font-bold text-muted-foreground uppercase mr-2">Update Status:</span>
+                    {TASK_STATUSES.map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => handleStatusChange(task.id, status)}
+                        disabled={loading || status === task.status}
+                        className={`text-[10px] px-3 py-1.5 rounded-md font-bold uppercase tracking-wider transition-all ${status === task.status
+                          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105 ring-2 ring-primary/50'
+                          : 'bg-secondary/40 text-muted-foreground border border-border/30 hover:bg-secondary/60 hover:text-foreground hover:border-primary/30'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {status.replace('MOVING_TO_', 'GOTO ').replace('ARRIVED_AT_', 'AT ').replace(/_/g, ' ')}
+                      </button>
+                    ))}
+                    <div className="flex-1"></div>
                     <button
-                      key={status}
-                      onClick={() => handleStatusChange(task.id, status)}
-                      disabled={loading || status === task.status}
-                      className={`text-xs px-2 py-1 rounded transition ${
-                        status === task.status
-                          ? 'bg-primary/30 text-primary font-bold'
-                          : 'bg-card/50 text-muted-foreground hover:bg-card/70'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      onClick={() => handleDeleteTask(task.id)}
+                      disabled={loading}
+                      className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition disabled:opacity-50"
+                      title="Delete Task"
                     >
-                      {status}
+                      <Trash2 className="w-4 h-4" />
                     </button>
-                  ))}
+                  </div>
                 </div>
               </div>
             );
@@ -489,7 +526,7 @@ export default function Tasks() {
                   <option value="">Select a shelf</option>
                   {shelfList.map((shelf) => (
                     <option key={shelf.id} value={shelf.id}>
-                      {shelf.warehouse_id} (Level {shelf.level})
+                      {shelf.name} (Level {shelf.level})
                     </option>
                   ))}
                 </select>
@@ -536,7 +573,7 @@ export default function Tasks() {
                     <option value="">Select target shelf</option>
                     {shelfList.map((shelf) => (
                       <option key={shelf.id} value={shelf.id}>
-                        {shelf.warehouse_id} (Level {shelf.level})
+                        {shelf.name} (Level {shelf.level})
                       </option>
                     ))}
                   </select>

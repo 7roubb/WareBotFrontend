@@ -135,10 +135,48 @@ export const connectWebSocket = () => {
     invokeCallbacks('task_progress_update', data);
   });
 
+  // Task status changes (granular updates)
+  socket.on('task_status_change', (data) => {
+    console.log('[WS] Task status change:', data);
+    invokeCallbacks('task_status_change', data);
+    // Also invoke generic task update for compatibility
+    invokeCallbacks('task_update', { ...data, status: data.new_status });
+  });
+
   // System health updates
   socket.on('system_update', (data) => {
     console.log('[WS] System update:', data);
     invokeCallbacks('system_update', data);
+  });
+
+  // Shelf fixed location updates
+  socket.on('shelf_location_fixed', (data) => {
+    console.log('[WS] Shelf location fixed:', data);
+    invokeCallbacks('shelf_location_fixed', data);
+  });
+
+  // All tasks map updates
+  socket.on('all_tasks_map_update', (data) => {
+    console.log('[WS] All tasks map update:', data);
+    invokeCallbacks('all_tasks_map_update', data);
+  });
+
+  // Shelf deleted events
+  socket.on('shelf_deleted', (data) => {
+    console.log('[WS] Shelf deleted:', data);
+    invokeCallbacks('shelf_deleted', data);
+  });
+
+  // Zone update events
+  socket.on('zone_update', (data) => {
+    console.log('[WS] Zone update:', data);
+    invokeCallbacks('zone_update', data);
+  });
+
+  // Zone deleted events
+  socket.on('zone_deleted', (data) => {
+    console.log('[WS] Zone deleted:', data);
+    invokeCallbacks('zone_deleted', data);
   });
 
   return socket;
@@ -366,11 +404,59 @@ export const onTaskProgressUpdate = (cb: (data: any) => void) => {
 };
 
 /**
+ * Listen for task status change events
+ */
+export const onTaskStatusChange = (cb: (data: any) => void) => {
+  console.log('[WS] Subscribing to task_status_change events');
+  return registerCallback('task_status_change', cb);
+};
+
+/**
  * Listen for real-time system health updates
  */
 export const onSystemUpdate = (cb: (data: any) => void) => {
   console.log('[WS] Subscribing to system_update events');
   return registerCallback('system_update', cb);
+};
+
+/**
+ * Listen for shelf location fixed events (when restoration happens)
+ */
+export const onShelfLocationFixed = (cb: (data: any) => void) => {
+  console.log('[WS] Subscribing to shelf_location_fixed events');
+  return registerCallback('shelf_location_fixed', cb);
+};
+
+/**
+ * Listen for all tasks map updates (for syncing)
+ */
+export const onAllTasksMapUpdate = (cb: (data: any) => void) => {
+  console.log('[WS] Subscribing to all_tasks_map_update events');
+  return registerCallback('all_tasks_map_update', cb);
+};
+
+/**
+ * Listen for shelf deletion events
+ */
+export const onShelfDeleted = (cb: (data: { id: string; timestamp: string }) => void) => {
+  console.log('[WS] Subscribing to shelf_deleted events');
+  return registerCallback('shelf_deleted', cb);
+};
+
+/**
+ * Listen for zone update events
+ */
+export const onZoneUpdate = (cb: (data: any) => void) => {
+  console.log('[WS] Subscribing to zone_update events');
+  return registerCallback('zone_update', cb);
+};
+
+/**
+ * Listen for zone deletion events
+ */
+export const onZoneDeleted = (cb: (data: { id: string; timestamp: string }) => void) => {
+  console.log('[WS] Subscribing to zone_deleted events');
+  return registerCallback('zone_deleted', cb);
 };
 
 /**

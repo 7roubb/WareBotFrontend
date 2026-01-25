@@ -7,7 +7,7 @@ import type {
   TaskCreate,
   TaskStatus,
   TaskType,
-} from '@/types'; 
+} from '@/types';
 
 let token: string | null = localStorage.getItem('token');
 
@@ -67,7 +67,7 @@ const handleResponse = async (res: Response, endpoint: string) => {
 const sanitizeDoc = (doc: any) => {
   if (!doc || typeof doc !== 'object') return doc;
   const out = { ...doc };
-  
+
   if (out._id) {
     out.id = String(out._id);
     delete out._id;
@@ -327,8 +327,8 @@ export const shelves = {
   // -------------------------------------
   create: async (data: ShelfCreate): Promise<Shelf> => {
     // Validate required fields
-    if (!data.warehouse_id || data.warehouse_id.trim() === '') {
-      throw new Error('warehouse_id is required');
+    if (!data.name || data.name.trim() === '') {
+      throw new Error('name is required');
     }
 
     if (data.current_x === undefined || isNaN(data.current_x)) {
@@ -344,7 +344,7 @@ export const shelves = {
     }
 
     const payload: any = {
-      warehouse_id: String(data.warehouse_id).trim(),
+      name: String(data.name).trim(),
       current_x: Number(data.current_x),
       current_y: Number(data.current_y),
       current_yaw: data.current_yaw !== undefined ? Number(data.current_yaw) : 0.0,
@@ -386,8 +386,8 @@ export const shelves = {
   update: async (id: string, data: ShelfUpdate): Promise<Shelf> => {
     const payload: any = {};
 
-    if (data.warehouse_id !== undefined) {
-      payload.warehouse_id = String(data.warehouse_id).trim();
+    if (data.name !== undefined) {
+      payload.name = String(data.name).trim();
     }
     if (data.level !== undefined) {
       payload.level = Number(Math.floor(data.level));
@@ -824,7 +824,7 @@ export const maps = {
 
 // Real-time task endpoints
 export const realtimeTasks = {
-  updatePosition: async (id: string, position: { x: number; y: number; yaw?: number }) => {
+  updatePosition: async (id: string, position: { robot_x: number; robot_y: number; status?: string }) => {
     const res = await fetch(`${API_URL}/tasks/realtime/${id}/position`, {
       method: 'POST',
       headers: getHeaders(),
@@ -833,30 +833,56 @@ export const realtimeTasks = {
     return handleResponse(res, `/tasks/realtime/${id}/position`);
   },
 
-  updateStatus: async (id: string, status: string) => {
+  updateStatus: async (
+    id: string,
+    data: {
+      old_status?: string;
+      new_status: string;
+      current_target?: string;
+      robot_x?: number;
+      robot_y?: number;
+    }
+  ) => {
     const res = await fetch(`${API_URL}/tasks/realtime/${id}/status`, {
       method: 'PUT',
       headers: getHeaders(),
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(data),
     });
     return handleResponse(res, `/tasks/realtime/${id}/status`);
   },
 
   getForMap: async (id: string) => {
     const res = await fetch(`${API_URL}/tasks/realtime/${id}`);
-    return sanitizeDoc(await handleResponse(res, `/tasks/realtime/${id}`));
+    const data = await handleResponse(res, `/tasks/realtime/${id}`);
+    return data?.task || data; // Handle wrapper or direct return
   },
 
   getAllForMap: async () => {
     const res = await fetch(`${API_URL}/tasks/realtime/map/all`);
     const data = await handleResponse(res, '/tasks/realtime/map/all');
-    return sanitizeDocs(Array.isArray(data) ? data : data.tasks || []);
+    return Array.isArray(data) ? data : data.tasks || [];
   },
 
   getRobotTasks: async (robotId: string) => {
     const res = await fetch(`${API_URL}/tasks/realtime/map/robot/${robotId}`);
     const data = await handleResponse(res, `/tasks/realtime/map/robot/${robotId}`);
-    return sanitizeDocs(Array.isArray(data) ? data : data.tasks || []);
+    return Array.isArray(data) ? data : data.tasks || [];
+  },
+
+  restoreShelf: async (taskId: string) => {
+    const res = await fetch(`${API_URL}/tasks/realtime/${taskId}/restore-shelf`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res, `/tasks/realtime/${taskId}/restore-shelf`);
+  },
+
+  broadcastMapUpdate: async () => {
+    const res = await fetch(`${API_URL}/tasks/realtime/broadcast-map-update`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res, '/tasks/realtime/broadcast-map-update');
   },
 };
 
@@ -956,6 +982,18 @@ export const tasks = {
   },
 
   // -------------------------------------
+  // RESTORE SHELF BY PRODUCT
+  // -------------------------------------
+  restoreShelfByProduct: async (productId: string, targetZoneId: string, priority: number = 2) => {
+    const res = await fetch(`${API_URL}/tasks/restore-shelf-by-product`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ product_id: productId, target_zone_id: targetZoneId, priority }),
+    });
+    return sanitizeDoc(await handleResponse(res, '/tasks/restore-shelf-by-product'));
+  },
+
+  // -------------------------------------
   // UPDATE TASK STATUS
   // Handle task lifecycle state transitions
   // -------------------------------------
@@ -964,16 +1002,13 @@ export const tasks = {
     new_status: TaskStatus,
     metadata?: { old_status?: TaskStatus; current_target?: string }
   ): Promise<Task> => {
+    // Determine old_status if not provided (optional, but good practice)
+    // Here we pass what we have; backend handles logic
     const payload: any = {
       new_status: String(new_status).toUpperCase(),
+      old_status: metadata?.old_status,
+      current_target: metadata?.current_target,
     };
-
-    if (metadata?.old_status) {
-      payload.old_status = metadata.old_status;
-    }
-    if (metadata?.current_target) {
-      payload.current_target = metadata.current_target;
-    }
 
     console.log('[Tasks API] Updating task status:', JSON.stringify(payload, null, 2));
 
@@ -1021,21 +1056,7 @@ export const tasks = {
 
     console.log('[Tasks API] Updating robot position:', payload);
 
-    const res = await fetch(`${API_URL}/tasks/realtime/${id}/position`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(payload),
-    });
-
-    const responseData = await res.json();
-
-    if (!res.ok) {
-      const error: any = new Error(responseData?.error || 'Failed to update robot position');
-      error.status = res.status;
-      throw error;
-    }
-
-    return responseData;
+    return realtimeTasks.updatePosition(id, payload);
   },
 
   // -------------------------------------
@@ -1044,12 +1065,7 @@ export const tasks = {
   // and robot position for real-time visualization
   // -------------------------------------
   getTaskMapView: async (id: string): Promise<any> => {
-    const res = await fetch(`${API_URL}/tasks/realtime/${id}`, {
-      headers: getHeaders(),
-    });
-
-    const data = await handleResponse(res, `/tasks/realtime/${id}`);
-    return data?.task || data;
+    return realtimeTasks.getForMap(id);
   },
 
   // -------------------------------------
@@ -1057,12 +1073,7 @@ export const tasks = {
   // Returns all tasks in progress for map display
   // -------------------------------------
   getAllTasksMapView: async (): Promise<any[]> => {
-    const res = await fetch(`${API_URL}/tasks/realtime/map/all`, {
-      headers: getHeaders(),
-    });
-
-    const data = await handleResponse(res, '/tasks/realtime/map/all');
-    return data?.tasks || [];
+    return realtimeTasks.getAllForMap();
   },
 
   // -------------------------------------
@@ -1070,12 +1081,7 @@ export const tasks = {
   // Returns all tasks assigned to a specific robot
   // -------------------------------------
   getRobotTasks: async (robot_id: string): Promise<any[]> => {
-    const res = await fetch(`${API_URL}/tasks/realtime/map/robot/${robot_id}`, {
-      headers: getHeaders(),
-    });
-
-    const data = await handleResponse(res, `/tasks/realtime/map/robot/${robot_id}`);
-    return data?.tasks || [];
+    return realtimeTasks.getRobotTasks(robot_id);
   },
 
   // -------------------------------------
@@ -1145,19 +1151,6 @@ export const tasks = {
   // Useful for syncing state after batch updates
   // -------------------------------------
   broadcastMapUpdate: async (): Promise<any> => {
-    const res = await fetch(`${API_URL}/tasks/realtime/broadcast-map-update`, {
-      method: 'POST',
-      headers: getHeaders(),
-    });
-
-    const responseData = await res.json();
-
-    if (!res.ok) {
-      const error: any = new Error(responseData?.error || 'Failed to broadcast map update');
-      error.status = res.status;
-      throw error;
-    }
-
-    return responseData;
+    return realtimeTasks.broadcastMapUpdate();
   },
 };

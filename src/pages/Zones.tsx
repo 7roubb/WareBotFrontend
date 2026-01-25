@@ -27,6 +27,8 @@ import { Layers, Plus, Trash2, Edit2, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Zone, ZoneCreate, ZoneUpdate } from '@/types';
 
+import { zones } from '@/services/api';
+
 interface FormData {
   zone_id: string;
   name: string;
@@ -44,7 +46,7 @@ interface FormErrors {
 }
 
 export default function Zones() {
-  const [zones, setZones] = useState<Zone[]>([]);
+  const [zonesList, setZonesList] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -71,30 +73,8 @@ export default function Zones() {
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/zones', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (!response.ok) {
-        // Check if response is HTML (error page from server)
-        const contentType = response.headers.get('content-type');
-        if (contentType?.includes('text/html')) {
-          throw new Error('API endpoint not found. Make sure Flask backend is running and zones routes are registered.');
-        }
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to load zones');
-      }
-      
-      const data = await response.json();
-      const zoneArray = Array.isArray(data) ? data : [];
-      console.log('[DEBUG] zones API response:', zoneArray);
-      zoneArray.forEach((z: any) => {
-        console.log(`  ${z.zone_id}: (${z.x}, ${z.y}), yaw=${z.yaw ?? 'N/A'}`);
-      });
-      setZones(zoneArray);
+      const data = await zones.list();
+      setZonesList(data);
     } catch (err: any) {
       console.error('[DEBUG] Error loading zones:', err);
       setError(err.message);
@@ -114,7 +94,7 @@ export default function Zones() {
       errors.zone_id = 'Zone ID must be 1-100 characters';
     } else if (!editingZone) {
       // Check for duplicate zone_id only when creating
-      if (zones.some(z => z.zone_id === formData.zone_id.trim())) {
+      if (zonesList.some(z => z.zone_id === formData.zone_id.trim())) {
         errors.zone_id = 'Zone ID must be unique';
       }
     }
@@ -161,7 +141,6 @@ export default function Zones() {
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
       const payload = {
         zone_id: formData.zone_id.trim(),
         name: formData.name.trim(),
@@ -170,24 +149,21 @@ export default function Zones() {
         yaw: parseFloat(formData.yaw as string),
       };
 
-      const response = await fetch('/api/zones', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        const errorMsg = errorData.error === 'zone_exists' 
-          ? 'Zone ID already exists'
-          : errorData.error || 'Failed to create zone';
-        throw new Error(errorMsg);
+      if (editingZone) {
+        // Update existing zone
+        await zones.update(editingZone.id, {
+          name: payload.name,
+          x: payload.x,
+          y: payload.y,
+          yaw: payload.yaw,
+        });
+        toast({ title: 'Zone updated successfully' });
+      } else {
+        // Create new zone
+        await zones.create(payload);
+        toast({ title: 'Zone created successfully' });
       }
 
-      toast({ title: 'Zone created successfully' });
       setIsDialogOpen(false);
       setEditingZone(null);
       setFormData({ zone_id: '', name: '', x: '', y: '', yaw: '' });
@@ -204,19 +180,7 @@ export default function Zones() {
     if (!zoneToDelete) return;
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/zones/${zoneToDelete}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || errorData.message || 'Failed to delete zone');
-      }
-
+      await zones.delete(zoneToDelete);
       toast({ title: 'Zone deleted successfully' });
       setDeleteDialogOpen(false);
       setZoneToDelete(null);
@@ -362,7 +326,7 @@ export default function Zones() {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Creating...' : 'Create Zone'}
+                  {isSubmitting ? (editingZone ? 'Updating...' : 'Creating...') : (editingZone ? 'Update Zone' : 'Create Zone')}
                 </Button>
               </div>
             </form>
@@ -377,7 +341,7 @@ export default function Zones() {
         </Alert>
       )}
 
-      {zones.length === 0 && !error && (
+      {zonesList.length === 0 && !error && (
         <EmptyState
           icon={Layers}
           title="No zones yet"
@@ -385,9 +349,9 @@ export default function Zones() {
         />
       )}
 
-      {zones.length > 0 && !error && (
+      {zonesList.length > 0 && !error && (
         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {zones.map((zone) => (
+          {zonesList.map((zone) => (
             <Card key={zone.id} className="glass-card glow-border hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">

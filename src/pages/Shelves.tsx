@@ -9,7 +9,7 @@ import { isSafeShelfPosition, getGridVisualization } from '../services/obstacle_
 import type { OccupancyGrid } from '../services/obstacle_detection';
 
 interface FormData {
-  warehouse_id: string;
+  name: string;
   current_x: number;
   current_y: number;
   current_yaw: number;
@@ -91,7 +91,7 @@ export default function Shelves() {
   const [gridUpdateTime, setGridUpdateTime] = useState<number>(0);
 
   const initialFormData: FormData = {
-    warehouse_id: '',
+    name: '',
     current_x: 0,
     current_y: 0,
     current_yaw: 0,
@@ -139,11 +139,11 @@ export default function Shelves() {
           prev.map((s) =>
             s.id === data.id
               ? {
-                  ...s,
-                  current_x: data.current_x,
-                  current_y: data.current_y,
-                  current_yaw: data.current_yaw,
-                }
+                ...s,
+                current_x: data.current_x,
+                current_y: data.current_y,
+                current_yaw: data.current_yaw,
+              }
               : s
           )
         );
@@ -153,11 +153,11 @@ export default function Shelves() {
           setSelectedShelf((prev) =>
             prev
               ? {
-                  ...prev,
-                  current_x: data.current_x,
-                  current_y: data.current_y,
-                  current_yaw: data.current_yaw,
-                }
+                ...prev,
+                current_x: data.current_x,
+                current_y: data.current_y,
+                current_yaw: data.current_yaw,
+              }
               : null
           );
         }
@@ -186,7 +186,7 @@ export default function Shelves() {
       // This depends on your API - adjust endpoint accordingly
       // The grid should come from your Map API or be sent via WebSocket
       console.log('[Shelves] Attempting to load occupancy grid...');
-      
+
       // For now, we'll rely on WebSocket updates
       // If you have a direct endpoint, uncomment below:
       // const response = await fetch('/api/map/occupancy-grid');
@@ -214,7 +214,7 @@ export default function Shelves() {
       } else {
         shelfArray.forEach((s) => {
           console.log(
-            `  [DEBUG] ${s.warehouse_id}: current=(${s.current_x}, ${s.current_y}), storage=(${s.storage_x}, ${s.storage_y}), yaw=${s.current_yaw ?? 'N/A'}`
+            `  [DEBUG] ${s.name}: current=(${s.current_x}, ${s.current_y}), storage=(${s.storage_x}, ${s.storage_y}), yaw=${s.current_yaw ?? 'N/A'}`
           );
         });
       }
@@ -230,11 +230,11 @@ export default function Shelves() {
   };
 
   const validateForm = (): string | null => {
-    if (!formData.warehouse_id || formData.warehouse_id.trim() === '') {
-      return 'Warehouse ID is required';
+    if (!formData.name || formData.name.trim() === '') {
+      return 'Name is required';
     }
-    if (formData.warehouse_id.length > 100) {
-      return 'Warehouse ID must be 100 characters or less';
+    if (formData.name.length > 100) {
+      return 'Name must be 100 characters or less';
     }
 
     if (isNaN(Number(formData.current_x))) {
@@ -299,8 +299,8 @@ export default function Shelves() {
         // Step 1: Update metadata (warehouse_id, level, available, status)
         const updateData: ShelfUpdate = {};
 
-        if (formData.warehouse_id !== editingShelf.warehouse_id) {
-          updateData.warehouse_id = formData.warehouse_id.trim();
+        if (formData.name !== editingShelf.name) {
+          updateData.name = formData.name.trim();
         }
         if (formData.level !== editingShelf.level) {
           updateData.level = Number(Math.floor(formData.level));
@@ -374,13 +374,13 @@ export default function Shelves() {
 
             if (!obstacleCheck.safe) {
               setError(`❌ Cannot place shelf: ${obstacleCheck.reason}`);
-              
+
               // Show visualization if grid is available
               if (occupancyGrid) {
                 const viz = getGridVisualization(nextPos.x, nextPos.y, occupancyGrid);
                 console.log(viz);
               }
-              
+
               return;
             }
 
@@ -399,7 +399,7 @@ export default function Shelves() {
         }
 
         const submitData: ShelfCreate = {
-          warehouse_id: formData.warehouse_id.trim(),
+          name: formData.name.trim(),
           current_x: Number(finalCurrentX),
           current_y: Number(finalCurrentY),
           current_yaw: Number(formData.current_yaw) || 0.0,
@@ -529,7 +529,7 @@ export default function Shelves() {
     if (shelf) {
       setEditingShelf(shelf);
       setFormData({
-        warehouse_id: shelf.warehouse_id || '',
+        name: shelf.name || '',
         current_x: shelf.current_x || 0,
         current_y: shelf.current_y || 0,
         current_yaw: shelf.current_yaw || 0,
@@ -653,15 +653,14 @@ export default function Shelves() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Status:</span>
                   <span
-                    className={`font-bold text-sm px-2 py-1 rounded ${
-                      shelf.status === 'IDLE'
-                        ? 'bg-green-500/20 text-green-400'
-                        : shelf.status === 'BUSY'
+                    className={`font-bold text-sm px-2 py-1 rounded ${shelf.status === 'IDLE'
+                      ? 'bg-green-500/20 text-green-400'
+                      : shelf.status === 'BUSY'
                         ? 'bg-blue-500/20 text-blue-400'
                         : shelf.status === 'ERROR'
-                        ? 'bg-red-500/20 text-red-400'
-                        : 'bg-gray-500/20 text-gray-400'
-                    }`}
+                          ? 'bg-red-500/20 text-red-400'
+                          : 'bg-gray-500/20 text-gray-400'
+                      }`}
                   >
                     {shelf.status}
                   </span>
@@ -691,11 +690,11 @@ export default function Shelves() {
                         </linearGradient>
                       </defs>
                       <rect x="4" y="4" width="56" height="56" rx="10" fill="none" stroke="url(#goldA)" strokeWidth="3" />
-                      <rect x="10" y="10" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3"/>
+                      <rect x="10" y="10" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3" />
                       <rect x="14" y="14" width="6" height="6" rx="1" fill="url(#goldA)" />
-                      <rect x="40" y="10" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3"/>
+                      <rect x="40" y="10" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3" />
                       <rect x="44" y="14" width="6" height="6" rx="1" fill="url(#goldA)" />
-                      <rect x="10" y="40" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3"/>
+                      <rect x="10" y="40" width="14" height="14" rx="3" fill="none" stroke="url(#goldA)" strokeWidth="3" />
                       <rect x="14" y="44" width="6" height="6" rx="1" fill="url(#goldA)" />
                       <rect x="30" y="30" width="6" height="6" fill="url(#goldA)" rx="2" />
                     </svg>
@@ -705,8 +704,8 @@ export default function Shelves() {
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
-                    <div className="text-xs text-muted-foreground mb-1">Warehouse</div>
-                    <p className="text-sm font-bold text-primary">{shelf.warehouse_id}</p>
+                    <div className="text-xs text-muted-foreground mb-1">Name</div>
+                    <p className="text-sm font-bold text-primary">{shelf.name}</p>
                   </div>
 
                   <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
@@ -770,9 +769,8 @@ export default function Shelves() {
                 <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
                   <div className="flex items-center space-x-2 text-xs">
                     <div
-                      className={`w-2 h-2 rounded-full ${
-                        occupancyGrid ? 'bg-green-500' : 'bg-yellow-500'
-                      }`}
+                      className={`w-2 h-2 rounded-full ${occupancyGrid ? 'bg-green-500' : 'bg-yellow-500'
+                        }`}
                     />
                     <span className="text-muted-foreground">
                       {occupancyGrid
@@ -805,9 +803,8 @@ export default function Shelves() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-2 ml-8">
                     {useAutoPosition
-                      ? `Next position will be (${
-                          (shelfList.length % 3) * 1.0
-                        }, ${Math.floor(shelfList.length / 3) * 1.0})`
+                      ? `Next position will be (${(shelfList.length % 3) * 1.0
+                      }, ${Math.floor(shelfList.length / 3) * 1.0})`
                       : 'Manually set positions below'}
                   </p>
                 </div>
@@ -815,17 +812,17 @@ export default function Shelves() {
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Warehouse ID * <span className="text-xs text-muted-foreground">(1-100 chars)</span>
+                  Shelf Name * <span className="text-xs text-muted-foreground">(1-100 chars)</span>
                 </label>
                 <input
                   type="text"
                   maxLength={100}
-                  value={formData.warehouse_id}
+                  value={formData.name}
                   onChange={(e) =>
-                    setFormData({ ...formData, warehouse_id: e.target.value })
+                    setFormData({ ...formData, name: e.target.value })
                   }
                   className="w-full px-4 py-2 border border-border/30 rounded-lg bg-card/50 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 transition"
-                  placeholder="e.g., WH001"
+                  placeholder="e.g., Shelf A1"
                   required
                 />
               </div>
@@ -1028,7 +1025,7 @@ export default function Shelves() {
                 <h2 className="text-2xl font-bold">
                   Shelf ({selectedShelf.current_x?.toFixed(2)}, {selectedShelf.current_y?.toFixed(2)})
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1">Level {selectedShelf.level} • {selectedShelf.warehouse_id}</p>
+                <p className="text-sm text-muted-foreground mt-1">Level {selectedShelf.level} • {selectedShelf.name}</p>
               </div>
               <button
                 onClick={closeDetailModal}
@@ -1042,8 +1039,8 @@ export default function Shelves() {
               {/* Stats Grid */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-                  <div className="text-xs text-muted-foreground mb-2">Warehouse</div>
-                  <p className="text-lg font-bold text-primary">{selectedShelf.warehouse_id}</p>
+                  <div className="text-xs text-muted-foreground mb-2">Name</div>
+                  <p className="text-lg font-bold text-primary">{selectedShelf.name}</p>
                 </div>
 
                 <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
@@ -1099,7 +1096,7 @@ export default function Shelves() {
 
               {/* Restore Button */}
               {selectedShelf.current_x !== selectedShelf.storage_x ||
-              selectedShelf.current_y !== selectedShelf.storage_y ? (
+                selectedShelf.current_y !== selectedShelf.storage_y ? (
                 <div className="p-4 rounded-lg bg-yellow-500/20 border border-yellow-500/30">
                   <p className="text-sm text-yellow-200 mb-3">
                     Shelf is at a different location than storage. You can restore it:

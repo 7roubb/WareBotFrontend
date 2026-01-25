@@ -28,11 +28,11 @@ export function Zone3D({
   // Zone color
   const zoneColor = useMemo(() => {
     switch (type) {
-      case 'CHARGING': return '#22c55e';
-      case 'PICKUP': return '#3b82f6';
-      case 'DROP': return '#f59e0b';
-      case 'STORAGE': return '#8b5cf6';
-      case 'RESTRICTED': return '#ef4444';
+      case 'CHARGING': return '#f5a50f'; // Warning/Orange
+      case 'PICKUP': return '#1bca56'; // Success/Green
+      case 'DROP': return '#e02424'; // Destructive/Red
+      case 'STORAGE': return '#8b5cf6'; // Keep purple for storage
+      case 'RESTRICTED': return '#e02424'; // Destructive/Red
       default: return '#6b7280';
     }
   }, [type]);

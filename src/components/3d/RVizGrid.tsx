@@ -4,15 +4,16 @@ interface GridHelperProps {
   size?: number;
   divisions?: number;
   showAxes?: boolean;
+  gridCenter?: [number, number, number];
 }
 
-export function RVizGrid({ size = 25, divisions = 50, showAxes = true }: GridHelperProps) {
+export function RVizGrid({ size = 25, divisions = 50, showAxes = true, gridCenter = [0, 0, 0] }: GridHelperProps) {
   return (
     <group>
       {/* Main grid */}
-      <gridHelper 
-        args={[size, divisions, '#2563eb', '#1e3a5f']} 
-        position={[0, 0, 0]}
+      <gridHelper
+        args={[size, divisions, '#2563eb', '#1e3a5f']}
+        position={gridCenter}
       />
 
       {/* Coordinate axes */}

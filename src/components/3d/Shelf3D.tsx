@@ -22,10 +22,10 @@ export function Shelf3D({
   x,
   y,
   yaw = 0,
-  level = 3,
+  level = 4,
   available,
   width = 1,
-  height = 2.0,
+  height = 1.5,
   depth = 1,
   showLabel = true,
 }: Shelf3DProps) {
@@ -52,7 +52,7 @@ export function Shelf3D({
 
   return (
     <group ref={groupRef} position={[x, 0, y]} rotation={[0, -yawRad, 0]}>
-      
+
       {/* ================= WHEELS ================= */}
       {[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([xMult, zMult], i) => (
         <mesh
@@ -146,7 +146,7 @@ export function Shelf3D({
             outlineWidth={0.015}
             outlineColor="#000000"
           >
-            {name || id}
+            {name || name}
           </Text>
           <Text
             position={[0, -0.15, 0]}

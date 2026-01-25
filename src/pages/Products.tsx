@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Plus, Package, Edit, Trash2, Upload, X, DollarSign, Box, TrendingDown, TrendingUp, Settings } from 'lucide-react';
-import { products, shelves } from '../services/api';
+import { Plus, Package, Edit, Trash2, Upload, X, DollarSign, Box, TrendingDown, TrendingUp, Settings, Truck, Search } from 'lucide-react';
+import { products, shelves, zones, tasks } from '../services/api';
 
 const PRODUCT_CATEGORIES = [
   'Electronics',
@@ -38,12 +38,21 @@ const PRODUCT_CATEGORIES = [
 export default function Products() {
   const [productList, setProductList] = useState<any[]>([]);
   const [shelfList, setShelfList] = useState<any[]>([]);
+  const [zoneList, setZoneList] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [stockAction, setStockAction] = useState<'pick' | 'return' | 'adjust'>('adjust');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Restore Modal State
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restoreProduct, setRestoreProduct] = useState<any>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState('');
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
+
   const [stockData, setStockData] = useState({
     quantity: 0,
     description: '',
@@ -64,17 +73,55 @@ export default function Products() {
     dimensions_cm: { length: 0, width: 0, height: 0 },
   });
 
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
   useEffect(() => {
-    loadProducts();
+    // Initial load
+    if (!searchQuery) {
+      loadProducts();
+    } else {
+      // Debounce search
+      const timer = setTimeout(() => {
+        handleSearch(searchQuery);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
     loadShelves();
-  }, []);
+    loadZones();
+  }, [searchQuery]); // Reload when query changes
+
+  const handleSearch = async (query: string) => {
+    setIsSearching(true);
+    try {
+      const results = await products.search(query);
+      setProductList(results);
+    } catch (error) {
+      console.error('Search failed:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const loadZones = async () => {
+    try {
+      const data = await zones.list();
+      setZoneList(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load zones:', error);
+    }
+  };
 
   const loadProducts = async () => {
+    setIsSearching(true);
     try {
       const data = await products.list();
       setProductList(data);
     } catch (error) {
       console.error('Failed to load products:', error);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -166,6 +213,51 @@ export default function Products() {
     }
   };
 
+
+
+  const handleRestoreClick = (product: any) => {
+    setRestoreProduct(product);
+    setRestoreError(null);
+    setRestoreSuccess(null);
+
+    // Attempt to auto-select a pickup zone
+    const pickupZone = zoneList.find(z => z.name.toLowerCase().includes('pickup')) || zoneList[0];
+    if (pickupZone) {
+      setSelectedZoneId(pickupZone.id);
+    }
+
+    setShowRestoreModal(true);
+  };
+
+  const confirmRestoreShelf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restoreProduct || !selectedZoneId) return;
+
+    setIsSubmitting(true);
+    setRestoreError(null);
+    setRestoreSuccess(null);
+
+    try {
+      await tasks.restoreShelfByProduct(restoreProduct.id, selectedZoneId);
+      setRestoreSuccess('Task created! Robot dispatched.');
+      setTimeout(() => {
+        setShowRestoreModal(false);
+        setRestoreProduct(null);
+        setRestoreSuccess(null);
+      }, 2000);
+    } catch (error: any) {
+      console.error('Failed to create restore task:', error);
+      let msg = error.message || 'Unknown error';
+      if (msg === 'shelf_not_found') msg = 'Shelf not found (might use deleted shelf ID).';
+      if (msg === 'no_available_robots') msg = 'No robots available to perform this task.';
+      if (msg === 'no_suitable_robot') msg = 'No robot capable of moving this shelf.';
+      if (msg === 'product_not_on_shelf') msg = 'Product is not currently assigned to a shelf.';
+      setRestoreError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const openModal = (product?: any) => {
     if (product) {
       setEditingProduct(product);
@@ -213,18 +305,40 @@ export default function Products() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Products</h1>
-          <p className="text-accent/70">Manage inventory and product details</p>
+          <h1 className="text-4xl font-bold font-display text-white mb-2">Inventory</h1>
+          <p className="text-muted-foreground font-mono text-sm">
+            Product catalog • {productList.length} item{productList.length !== 1 ? 's' : ''}
+          </p>
         </div>
-        <button
-          onClick={() => openModal()}
-          className="flex items-center space-x-2 px-6 py-3 rounded-lg bg-accent text-accent-foreground font-bold hover:brightness-110 transition-all"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Add Product</span>
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-3 rounded-lg bg-card/50 border border-border/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition w-full md:w-64"
+            />
+            {isSearching && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => openModal()}
+            className="flex items-center space-x-2 px-6 py-3 rounded-lg bg-accent text-accent-foreground font-bold hover:brightness-110 transition-all hover:scale-105 shadow-lg whitespace-nowrap"
+          >
+            <Plus className="w-5 h-5" />
+            <span>New Product</span>
+          </button>
+        </div>
       </div>
 
       {/* Products Grid */}
@@ -291,6 +405,17 @@ export default function Products() {
               </div>
 
               <div className="flex gap-2">
+                <button
+                  onClick={() => handleRestoreClick(product)}
+                  className={`flex-1 px-2 py-2 rounded-lg border text-xs font-semibold transition flex items-center justify-center gap-1 ${!product.shelf_id
+                    ? 'bg-muted/20 text-muted-foreground border-transparent cursor-not-allowed'
+                    : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border-emerald-500/20'
+                    }`}
+                  title="Bring Shelf to Pickup"
+                  disabled={!product.shelf_id}
+                >
+                  <Truck className="w-3 h-3" /> Get
+                </button>
                 <button
                   onClick={() => openStockModal(product)}
                   className="flex-1 px-2 py-2 rounded-lg bg-secondary/50 text-secondary-foreground hover:bg-secondary/70 border border-border/30 text-xs font-semibold transition flex items-center justify-center gap-1"
@@ -609,11 +734,10 @@ export default function Products() {
                   <button
                     type="button"
                     onClick={() => setStockAction('pick')}
-                    className={`p-3 rounded-lg border transition flex flex-col items-center space-y-1 ${
-                      stockAction === 'pick'
-                        ? 'bg-destructive/20 border-destructive/50 text-destructive'
-                        : 'bg-card/50 border-border/30 text-muted-foreground hover:border-border/50'
-                    }`}
+                    className={`p-3 rounded-lg border transition flex flex-col items-center space-y-1 ${stockAction === 'pick'
+                      ? 'bg-destructive/20 border-destructive/50 text-destructive'
+                      : 'bg-card/50 border-border/30 text-muted-foreground hover:border-border/50'
+                      }`}
                   >
                     <TrendingDown className="w-4 h-4" />
                     <span className="text-xs font-semibold">Pick</span>
@@ -621,11 +745,10 @@ export default function Products() {
                   <button
                     type="button"
                     onClick={() => setStockAction('return')}
-                    className={`p-3 rounded-lg border transition flex flex-col items-center space-y-1 ${
-                      stockAction === 'return'
-                        ? 'bg-success/20 border-success/50 text-success'
-                        : 'bg-card/50 border-border/30 text-muted-foreground hover:border-border/50'
-                    }`}
+                    className={`p-3 rounded-lg border transition flex flex-col items-center space-y-1 ${stockAction === 'return'
+                      ? 'bg-success/20 border-success/50 text-success'
+                      : 'bg-card/50 border-border/30 text-muted-foreground hover:border-border/50'
+                      }`}
                   >
                     <TrendingUp className="w-4 h-4" />
                     <span className="text-xs font-semibold">Return</span>
@@ -633,11 +756,10 @@ export default function Products() {
                   <button
                     type="button"
                     onClick={() => setStockAction('adjust')}
-                    className={`p-3 rounded-lg border transition flex flex-col items-center space-y-1 ${
-                      stockAction === 'adjust'
-                        ? 'bg-primary/20 border-primary/50 text-primary'
-                        : 'bg-card/50 border-border/30 text-muted-foreground hover:border-border/50'
-                    }`}
+                    className={`p-3 rounded-lg border transition flex flex-col items-center space-y-1 ${stockAction === 'adjust'
+                      ? 'bg-primary/20 border-primary/50 text-primary'
+                      : 'bg-card/50 border-border/30 text-muted-foreground hover:border-border/50'
+                      }`}
                   >
                     <Settings className="w-4 h-4" />
                     <span className="text-xs font-semibold">Adjust</span>
@@ -687,6 +809,86 @@ export default function Products() {
                 <button
                   type="button"
                   onClick={closeStockModal}
+                  className="px-6 py-3 bg-secondary/50 text-secondary-foreground rounded-lg font-semibold hover:bg-secondary/70 transition border border-border/30"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Restore Shelf Modal */}
+      {showRestoreModal && restoreProduct && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-card/80 backdrop-blur rounded-xl shadow-lg max-w-md w-full border border-border/30">
+            <div className="bg-card/50 text-foreground p-6 flex items-center justify-between border-b border-border/30">
+              <h2 className="text-xl font-bold flex items-center gap-3">
+                <Truck className="w-6 h-6 text-emerald-500" />
+                Retrieve Shelf
+              </h2>
+              <button
+                onClick={() => setShowRestoreModal(false)}
+                className="p-2 hover:bg-secondary/50 rounded-lg transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={confirmRestoreShelf} className="p-6 space-y-4">
+              <div className="bg-card/50 p-4 rounded-lg border border-border/30">
+                <p className="text-muted-foreground text-sm mb-2">Requesting retrieval for</p>
+                <p className="font-bold text-foreground text-lg">{restoreProduct.name}</p>
+                {restoreProduct.shelf_id && (
+                  <p className="text-xs text-muted-foreground mt-1 font-mono">Shelf ID: {restoreProduct.shelf_id.substring(0, 8)}...</p>
+                )}
+              </div>
+
+              {restoreError && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium">
+                  {restoreError}
+                </div>
+              )}
+
+              {restoreSuccess && (
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-sm font-medium">
+                  {restoreSuccess}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground mb-2">
+                  Select Drop-off Zone
+                </label>
+                <select
+                  value={selectedZoneId}
+                  onChange={(e) => setSelectedZoneId(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-card/50 border border-border/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition"
+                  required
+                >
+                  <option value="">-- Select Zone --</option>
+                  {zoneList.map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {zone.name} ({zone.type || 'Generic'})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  The robot will transport the shelf to this zone.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-border/30">
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !selectedZoneId}
+                  className="flex-1 bg-emerald-600 text-white py-3 rounded-lg font-bold hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/20"
+                >
+                  {isSubmitting ? 'Dispatching...' : 'Dispatch Robot'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRestoreModal(false)}
                   className="px-6 py-3 bg-secondary/50 text-secondary-foreground rounded-lg font-semibold hover:bg-secondary/70 transition border border-border/30"
                 >
                   Cancel
